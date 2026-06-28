@@ -1,5 +1,7 @@
 const STORAGE_KEY = "fireplug.stats.game.v1";
-const PERIOD_SECONDS = 8 * 60;
+const DEFAULT_CLOCK_SECONDS = 8 * 60;
+const MAX_CLOCK_SECONDS = 20 * 60;
+const HIGH_SCHOOL_THREE_RADIUS = 19.75;
 const DEFAULT_ROSTERS = {
   Hornets: [0, 1, 2, 3, 5, 7, 10, 11, 12, 14, 21, 24].map((number) => ({ number, name: "" })),
   Opponent: [1, 2, 3, 4, 5, 10, 11, 12, 20, 22, 23, 33].map((number) => ({ number, name: "" })),
@@ -8,6 +10,7 @@ const DEFAULT_ROSTERS = {
 const state = loadState();
 let draft = {};
 let step = "player";
+let clockTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -17,7 +20,6 @@ const stepTitles = {
   action: ["Action", ""],
   location: ["Location", "Tap the court"],
   result: ["Result", ""],
-  time: ["Time", ""],
 };
 
 function defaultState() {
@@ -25,6 +27,12 @@ function defaultState() {
     period: 1,
     periodMode: "quarters",
     lastTime: "8:00",
+    clockRunning: false,
+    courtOrientation: 0,
+    shotFilters: {
+      team: "all",
+      player: "all",
+    },
     teamNames: {
       Hornets: "Hornets",
       Opponent: "Opponent",
@@ -53,6 +61,13 @@ function migrateState(saved) {
     ...saved,
     period: Math.min(Math.max(Number(saved?.period) || 1, 1), periodLimit),
     periodMode,
+    lastTime: normalizeClock(saved?.lastTime || "8:00"),
+    clockRunning: false,
+    courtOrientation: saved?.courtOrientation === 180 ? 180 : 0,
+    shotFilters: {
+      team: ["Hornets", "Opponent", "all"].includes(saved?.shotFilters?.team) ? saved.shotFilters.team : "all",
+      player: "all",
+    },
     teamNames: {
       Hornets: sanitizeTeamName(saved?.teamNames?.Hornets, "Hornets"),
       Opponent: sanitizeTeamName(saved?.teamNames?.Opponent, "Opponent"),
@@ -78,11 +93,11 @@ function registerServiceWorker() {
 function secondsFromClock(value) {
   const [minutes = "0", seconds = "0"] = String(value).split(":");
   const total = Number(minutes) * 60 + Number(seconds);
-  return Number.isFinite(total) ? Math.max(0, Math.min(PERIOD_SECONDS, total)) : PERIOD_SECONDS;
+  return Number.isFinite(total) ? Math.max(0, Math.min(MAX_CLOCK_SECONDS, total)) : DEFAULT_CLOCK_SECONDS;
 }
 
 function clockFromSeconds(total) {
-  const safe = Math.max(0, Math.min(PERIOD_SECONDS, total));
+  const safe = Math.max(0, Math.min(MAX_CLOCK_SECONDS, total));
   const minutes = Math.floor(safe / 60);
   const seconds = String(safe % 60).padStart(2, "0");
   return `${minutes}:${seconds}`;
@@ -141,11 +156,10 @@ function classifyShot(x, y) {
   const dx = courtX - hoopX;
   const dy = courtY - hoopY;
   const distance = Math.sqrt(dx * dx + dy * dy);
-  const isCornerThree = courtY > 32.8 && (courtX < 3 || courtX > 47);
-  const isAboveBreakThree = courtY <= 32.8 && distance > 23.75;
+  const isThree = distance > HIGH_SCHOOL_THREE_RADIUS;
   if (distance < 4) return { zone: "At Rim", points: 2 };
   if (courtX >= 19 && courtX <= 31 && courtY >= 28) return { zone: "Paint", points: 2 };
-  if (isCornerThree || isAboveBreakThree) {
+  if (isThree) {
     if (courtX < 12) return { zone: "Left Corner 3", points: 3 };
     if (courtX > 38) return { zone: "Right Corner 3", points: 3 };
     if (courtX < 22) return { zone: "Left Wing 3", points: 3 };
@@ -167,6 +181,22 @@ function playerButton(team, player) {
   return `<button class="player-btn" data-team="${team}" data-player="${player.number}"><span>${player.number}</span>${label}</button>`;
 }
 
+function courtRotationFor(team) {
+  return team === "Opponent" ? (state.courtOrientation + 180) % 360 : state.courtOrientation;
+}
+
+function toBaseShotLocation(x, y, team) {
+  return courtRotationFor(team) === 180 ? { x: 100 - x, y: 100 - y } : { x, y };
+}
+
+function toVisualShotLocation(location, team) {
+  return courtRotationFor(team) === 180 ? { x: 100 - location.x, y: 100 - location.y } : location;
+}
+
+function applyCourtOrientation(court, team) {
+  court.classList.toggle("rotated", courtRotationFor(team) === 180);
+}
+
 function setStep(nextStep) {
   step = nextStep;
   $$(".step").forEach((el) => el.classList.toggle("active", el.id === `${step}Step`));
@@ -174,12 +204,12 @@ function setStep(nextStep) {
   $("#stepTitle").textContent = title;
   $("#stepMeta").textContent = step === "player" ? `${teamName("Hornets")} on top, ${teamName("Opponent")} below` : meta || playerLabel(draft.team, Number(draft.player));
   $("#backBtn").disabled = step === "player";
+  if (step === "location") applyCourtOrientation($("#shotCourt"), draft.team);
 }
 
 function resetDraft() {
   draft = {};
   $("#pendingShotMarker").style.display = "none";
-  renderEventTime();
   setStep("player");
 }
 
@@ -192,6 +222,9 @@ function renderScore() {
   $("#opponentScore").textContent = scoreFor("Opponent");
   $("#periodLabel").textContent = `${periodPrefix()}${state.period}`;
   $("#clockLabel").textContent = state.lastTime;
+  $("#adjustClockDisplay").textContent = state.lastTime;
+  $("#clockToggle").classList.toggle("running", state.clockRunning);
+  $("#clockToggle").setAttribute("aria-label", state.clockRunning ? "Pause clock" : "Start clock");
   $("#undoBtn").disabled = state.events.length === 0;
 }
 
@@ -255,6 +288,8 @@ function renderRoster() {
   });
   $("#hornetsRoster").value = rosterText(state.rosters.Hornets);
   $("#opponentRoster").value = rosterText(state.rosters.Opponent);
+  $("#orientationLabel").textContent =
+    state.courtOrientation === 180 ? `${teamName("Hornets")} basket at top` : `${teamName("Hornets")} basket at bottom`;
 }
 
 function rosterText(roster) {
@@ -293,13 +328,37 @@ function escapeHtml(value) {
   }[char]));
 }
 
-function renderEventTime() {
-  $("#eventTimeDisplay").textContent = state.lastTime;
+function changeClock(deltaSeconds) {
+  state.lastTime = clockFromSeconds(secondsFromClock(state.lastTime) + deltaSeconds);
+  persist();
+  renderScore();
 }
 
-function changeEventTime(deltaSeconds) {
-  state.lastTime = clockFromSeconds(secondsFromClock(state.lastTime) + deltaSeconds);
-  renderEventTime();
+function toggleClock() {
+  state.clockRunning = !state.clockRunning;
+  if (state.clockRunning) startClockTimer();
+  else stopClockTimer();
+  persist();
+  renderScore();
+}
+
+function startClockTimer() {
+  stopClockTimer();
+  clockTimer = setInterval(() => {
+    const next = secondsFromClock(state.lastTime) - 1;
+    state.lastTime = clockFromSeconds(next);
+    if (next <= 0) {
+      state.clockRunning = false;
+      stopClockTimer();
+    }
+    persist();
+    renderScore();
+  }, 1000);
+}
+
+function stopClockTimer() {
+  if (clockTimer) clearInterval(clockTimer);
+  clockTimer = null;
 }
 
 function periodLabelFor(event) {
@@ -337,14 +396,54 @@ function renderPlays() {
 function renderShotChart() {
   const court = $("#reviewCourt");
   court.querySelectorAll(".review-shot").forEach((node) => node.remove());
-  shotsFor().forEach((event) => {
+  const filteredShots = state.events.filter((event) => {
+    if (event.action !== "shot") return false;
+    if (state.shotFilters.team !== "all" && event.team !== state.shotFilters.team) return false;
+    if (state.shotFilters.player !== "all") {
+      const [team, player] = state.shotFilters.player.split(":");
+      if (event.team !== team || String(event.player) !== player) return false;
+    }
+    return true;
+  });
+  const orientationTeam = state.shotFilters.team === "Opponent" ? "Opponent" : "Hornets";
+  applyCourtOrientation(court, orientationTeam);
+  filteredShots.forEach((event) => {
+    const visual = toVisualShotLocation(event.location, orientationTeam);
     const marker = document.createElement("span");
     marker.className = `review-shot ${event.made ? "hit" : "miss"}`;
-    marker.style.left = `${event.location.x}%`;
-    marker.style.top = `${event.location.y}%`;
+    marker.style.left = `${visual.x}%`;
+    marker.style.top = `${visual.y}%`;
     marker.title = `${playerLabel(event.team, event.player)} ${actionText(event)}`;
     court.appendChild(marker);
   });
+}
+
+function renderShotFilters() {
+  const teamFilter = $("#shotTeamFilter");
+  const playerFilter = $("#shotPlayerFilter");
+  const currentTeam = state.shotFilters.team;
+  teamFilter.innerHTML = `
+    <option value="all">All teams</option>
+    <option value="Hornets">${escapeHtml(teamName("Hornets"))}</option>
+    <option value="Opponent">${escapeHtml(teamName("Opponent"))}</option>
+  `;
+  teamFilter.value = currentTeam;
+  const teams = currentTeam === "all" ? ["Hornets", "Opponent"] : [currentTeam];
+  const playerOptions = teams.flatMap((team) =>
+    withEventOnlyPlayers(team).map((number) => ({
+      value: `${team}:${number}`,
+      label: playerLabel(team, number),
+    }))
+  );
+  playerFilter.innerHTML = `<option value="all">All players</option>${playerOptions
+    .map((player) => `<option value="${player.value}">${escapeHtml(player.label)}</option>`)
+    .join("")}`;
+  if ([...playerFilter.options].some((option) => option.value === state.shotFilters.player)) {
+    playerFilter.value = state.shotFilters.player;
+  } else {
+    state.shotFilters.player = "all";
+    playerFilter.value = "all";
+  }
 }
 
 function render() {
@@ -354,6 +453,7 @@ function render() {
   renderPlays();
   renderShotChart();
   renderRoster();
+  renderShotFilters();
 }
 
 function saveDraft() {
@@ -361,7 +461,7 @@ function saveDraft() {
     id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
     period: state.period,
     periodMode: state.periodMode,
-    time: state.lastTime,
+    time: draft.time || state.lastTime,
     team: draft.team,
     player: Number(draft.player),
     action: draft.action,
@@ -381,7 +481,7 @@ function wireEvents() {
   document.addEventListener("click", (event) => {
     const player = event.target.closest(".player-btn");
     if (player) {
-      draft = { team: player.dataset.team, player: player.dataset.player };
+      draft = { team: player.dataset.team, player: player.dataset.player, time: state.lastTime };
       setStep("action");
     }
   });
@@ -390,7 +490,7 @@ function wireEvents() {
     button.addEventListener("click", () => {
       draft.action = button.dataset.action;
       if (draft.action === "shot") setStep("location");
-      else setStep("time");
+      else saveDraft();
     });
   });
 
@@ -398,10 +498,11 @@ function wireEvents() {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * 100;
     const y = ((event.clientY - rect.top) / rect.height) * 100;
-    draft.location = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, ...classifyShot(x, y) };
+    const base = toBaseShotLocation(x, y, draft.team);
+    draft.location = { x: Math.round(base.x * 10) / 10, y: Math.round(base.y * 10) / 10, ...classifyShot(base.x, base.y) };
     const marker = $("#pendingShotMarker");
-    marker.style.left = `${draft.location.x}%`;
-    marker.style.top = `${draft.location.y}%`;
+    marker.style.left = `${x}%`;
+    marker.style.top = `${y}%`;
     marker.style.display = "block";
     setStep("result");
   });
@@ -409,22 +510,27 @@ function wireEvents() {
   $$(".action-btn[data-made]").forEach((button) => {
     button.addEventListener("click", () => {
       draft.made = button.dataset.made === "true";
-      setStep("time");
+      saveDraft();
     });
   });
 
-  $$(".time-btn[data-time-delta]").forEach((button) => {
+  $$(".time-btn[data-clock-delta]").forEach((button) => {
     button.addEventListener("click", () => {
-      changeEventTime(Number(button.dataset.timeDelta));
-      renderScore();
+      changeClock(Number(button.dataset.clockDelta));
     });
   });
 
-  $("#saveEvent").addEventListener("click", saveDraft);
+  $("#clockToggle").addEventListener("click", toggleClock);
+
+  $("#clockAdjustBtn").addEventListener("click", () => {
+    state.clockRunning = false;
+    stopClockTimer();
+    renderScore();
+    $("#clockDialog").showModal();
+  });
 
   $("#undoBtn").addEventListener("click", () => {
     state.events.pop();
-    state.lastTime = state.events.at(-1)?.time || "8:00";
     persist();
     resetDraft();
     render();
@@ -434,16 +540,19 @@ function wireEvents() {
     if (step === "action") resetDraft();
     else if (step === "location") setStep("action");
     else if (step === "result") setStep("location");
-    else if (step === "time") setStep(draft.action === "shot" ? "result" : "action");
   });
 
   $("#periodDown").addEventListener("click", () => {
+    state.clockRunning = false;
+    stopClockTimer();
     state.period = Math.max(1, state.period - 1);
     persist();
     render();
   });
 
   $("#periodUp").addEventListener("click", () => {
+    state.clockRunning = false;
+    stopClockTimer();
     state.period = Math.min(maxPeriods(), state.period + 1);
     persist();
     render();
@@ -462,7 +571,8 @@ function wireEvents() {
     const rosters = state.rosters;
     const teamNames = state.teamNames;
     const periodMode = state.periodMode;
-    Object.assign(state, defaultState(), { rosters, teamNames, periodMode });
+    const courtOrientation = state.courtOrientation;
+    Object.assign(state, defaultState(), { rosters, teamNames, periodMode, courtOrientation });
     persist();
     resetDraft();
     render();
@@ -489,6 +599,24 @@ function wireEvents() {
     persist();
     render();
     $("#rosterStatus").textContent = "Roster saved.";
+  });
+
+  $("#rotateCourtBtn").addEventListener("click", () => {
+    state.courtOrientation = state.courtOrientation === 180 ? 0 : 180;
+    persist();
+    render();
+  });
+
+  $("#shotTeamFilter").addEventListener("change", (event) => {
+    state.shotFilters.team = event.target.value;
+    state.shotFilters.player = "all";
+    renderShotFilters();
+    renderShotChart();
+  });
+
+  $("#shotPlayerFilter").addEventListener("change", (event) => {
+    state.shotFilters.player = event.target.value;
+    renderShotChart();
   });
 }
 
