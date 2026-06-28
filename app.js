@@ -23,6 +23,7 @@ const stepTitles = {
   action: ["Action", ""],
   location: ["Location", "Tap the court"],
   result: ["Result", ""],
+  rebound: ["Rebound", "Choose rebounder or skip"],
 };
 
 function defaultState() {
@@ -195,11 +196,13 @@ function classifyShot(x, y) {
 function renderPlayers() {
   $("#hornetsPlayers").innerHTML = state.rosters.Hornets.map((player) => playerButton("Hornets", player)).join("");
   $("#opponentPlayers").innerHTML = state.rosters.Opponent.map((player) => playerButton("Opponent", player)).join("");
+  $("#reboundHornetsPlayers").innerHTML = state.rosters.Hornets.map((player) => playerButton("Hornets", player, "rebound-player-btn")).join("");
+  $("#reboundOpponentPlayers").innerHTML = state.rosters.Opponent.map((player) => playerButton("Opponent", player, "rebound-player-btn")).join("");
 }
 
-function playerButton(team, player) {
+function playerButton(team, player, className = "player-btn") {
   const label = player.name ? `<small>${escapeHtml(player.name)}</small>` : "";
-  return `<button class="player-btn" data-team="${team}" data-player="${player.number}"><span>${player.number}</span>${label}</button>`;
+  return `<button class="${className}" data-team="${team}" data-player="${player.number}"><span>${player.number}</span>${label}</button>`;
 }
 
 function courtRotationFor(team) {
@@ -251,6 +254,8 @@ function renderScore() {
   $("#awayTeamLabel").textContent = teamName("Opponent");
   $("#homePlayersLabel").textContent = teamName("Hornets");
   $("#awayPlayersLabel").textContent = teamName("Opponent");
+  $("#reboundHomePlayersLabel").textContent = teamName("Hornets");
+  $("#reboundAwayPlayersLabel").textContent = teamName("Opponent");
   $("#hornetsScore").textContent = scoreFor("Hornets");
   $("#opponentScore").textContent = scoreFor("Opponent");
   $("#periodLabel").textContent = periodLabel();
@@ -689,6 +694,29 @@ function saveDraft() {
   }
   state.events.push(event);
   persist();
+  if (event.action === "shot" && !event.made) {
+    draft = { missedShotId: event.id, time: event.time };
+    render();
+    setStep("rebound");
+  } else {
+    resetDraft();
+    render();
+  }
+  publishLiveSoon();
+}
+
+function saveRebound(team, player) {
+  state.events.push({
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    period: state.period,
+    periodMode: state.periodMode,
+    time: draft.time || state.lastTime,
+    team,
+    player: Number(player),
+    action: "rebound",
+    missedShotId: draft.missedShotId,
+  });
+  persist();
   resetDraft();
   render();
   publishLiveSoon();
@@ -700,6 +728,11 @@ function wireEvents() {
     if (player) {
       draft = { team: player.dataset.team, player: player.dataset.player, time: state.lastTime };
       setStep("action");
+    }
+
+    const rebounder = event.target.closest(".rebound-player-btn");
+    if (rebounder) {
+      saveRebound(rebounder.dataset.team, rebounder.dataset.player);
     }
   });
 
@@ -742,6 +775,12 @@ function wireEvents() {
     });
   });
 
+  $("#skipReboundBtn").addEventListener("click", () => {
+    resetDraft();
+    render();
+    publishLiveSoon();
+  });
+
   $$(".time-btn[data-clock-delta]").forEach((button) => {
     button.addEventListener("click", () => {
       changeClock(Number(button.dataset.clockDelta));
@@ -774,6 +813,7 @@ function wireEvents() {
     if (step === "action") resetDraft();
     else if (step === "location") setStep("action");
     else if (step === "result") setStep("location");
+    else if (step === "rebound") resetDraft();
   });
 
   $("#periodMinus").addEventListener("click", () => {
