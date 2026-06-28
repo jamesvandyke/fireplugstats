@@ -153,8 +153,8 @@ function shotsFor(team = "Hornets") {
   return state.events.filter((event) => event.team === team && event.action === "shot");
 }
 
-function statsForPlayer(player) {
-  const events = state.events.filter((event) => event.team === "Hornets" && event.player === player);
+function statsForPlayer(team, player) {
+  const events = state.events.filter((event) => event.team === team && event.player === player);
   const shots = events.filter((event) => event.action === "shot");
   const fieldShots = shots.filter((event) => event.shotType !== "freeThrow");
   const threes = fieldShots.filter((event) => event.points === 3);
@@ -270,18 +270,21 @@ function renderScore() {
 }
 
 function renderBox() {
-  const rosterNumbers = withEventOnlyPlayers("Hornets");
-  $("#boxRows").innerHTML = rosterNumbers.map((number) => {
-    const stats = statsForPlayer(number);
-    return `<tr>
-      <th>${playerLabel("Hornets", number)}</th>
-      <td>${stats.points}</td>
-      <td>${stats.fgMade}-${stats.fgAtt}</td>
-      <td>${stats.threeMade}-${stats.threeAtt}</td>
-      <td>${stats.rebounds}</td>
-      <td>${stats.steals}</td>
-      <td>${stats.fouls}</td>
-    </tr>`;
+  $("#boxRows").innerHTML = ["Hornets", "Opponent"].map((team) => {
+    const rosterNumbers = withEventOnlyPlayers(team);
+    const rows = rosterNumbers.map((number) => {
+      const stats = statsForPlayer(team, number);
+      return `<tr>
+        <th>${escapeHtml(playerLabel(team, number))}</th>
+        <td>${stats.points}</td>
+        <td>${stats.fgMade}-${stats.fgAtt}</td>
+        <td>${stats.threeMade}-${stats.threeAtt}</td>
+        <td>${stats.rebounds}</td>
+        <td>${stats.steals}</td>
+        <td>${stats.fouls}</td>
+      </tr>`;
+    }).join("");
+    return `<tr class="team-box-row"><th colspan="7">${escapeHtml(teamName(team))}</th></tr>${rows}`;
   }).join("");
 }
 

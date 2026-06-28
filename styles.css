@@ -568,6 +568,14 @@ thead th {
   font-size: 12px;
 }
 
+.team-box-row th {
+  background: #eee6db;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
 .play-list {
   margin: 0;
   padding: 0;
