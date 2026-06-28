@@ -1,6 +1,7 @@
 const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
 const MAX_CLOCK_SECONDS = 20 * 60;
+const MIN_CLOCK_SECONDS = 1;
 const HIGH_SCHOOL_THREE_RADIUS = 19.75;
 const ORIENTATIONS = [0, 90, 180, 270];
 const DEFAULT_ROSTERS = {
@@ -28,6 +29,7 @@ function defaultState() {
   return {
     period: 1,
     periodMode: "quarters",
+    periodSeconds: DEFAULT_CLOCK_SECONDS,
     lastTime: "8:00",
     clockRunning: false,
     courtOrientation: 0,
@@ -67,6 +69,7 @@ function migrateState(saved) {
     ...saved,
     period: Math.max(Number(saved?.period) || 1, 1),
     periodMode,
+    periodSeconds: periodClockLength(saved?.periodSeconds ? clockFromSeconds(saved.periodSeconds) : saved?.periodLength || saved?.lastTime || "8:00"),
     lastTime: normalizeClock(saved?.lastTime || "8:00"),
     clockRunning: false,
     courtOrientation: ORIENTATIONS.includes(saved?.courtOrientation) ? saved.courtOrientation : 0,
@@ -112,6 +115,10 @@ function clockFromSeconds(total) {
   const minutes = Math.floor(safe / 60);
   const seconds = String(safe % 60).padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+function periodClockLength(value) {
+  return Math.max(MIN_CLOCK_SECONDS, secondsFromClock(value));
 }
 
 function maxPeriods() {
@@ -201,17 +208,17 @@ function courtRotationFor(team) {
 
 function toBaseShotLocation(x, y, team) {
   const rotation = courtRotationFor(team);
-  if (rotation === 90) return { x: y, y: 100 - x };
+  if (rotation === 90) return { x: 100 - y, y: x };
   if (rotation === 180) return { x: 100 - x, y: 100 - y };
-  if (rotation === 270) return { x: 100 - y, y: x };
+  if (rotation === 270) return { x: y, y: 100 - x };
   return { x, y };
 }
 
 function toVisualShotLocation(location, team) {
   const rotation = courtRotationFor(team);
-  if (rotation === 90) return { x: 100 - location.y, y: location.x };
+  if (rotation === 90) return { x: location.y, y: 100 - location.x };
   if (rotation === 180) return { x: 100 - location.x, y: 100 - location.y };
-  if (rotation === 270) return { x: location.y, y: 100 - location.x };
+  if (rotation === 270) return { x: 100 - location.y, y: location.x };
   return location;
 }
 
@@ -219,8 +226,8 @@ function applyCourtOrientation(court, team) {
   court.classList.remove("rotated", "rotated-right", "rotated-left");
   const rotation = courtRotationFor(team);
   if (rotation === 180) court.classList.add("rotated");
-  if (rotation === 90) court.classList.add("rotated-right");
-  if (rotation === 270) court.classList.add("rotated-left");
+  if (rotation === 90) court.classList.add("rotated-left");
+  if (rotation === 270) court.classList.add("rotated-right");
 }
 
 function setStep(nextStep) {
@@ -315,6 +322,7 @@ function renderRoster() {
   $$("input[name='periodMode']").forEach((input) => {
     input.checked = input.value === state.periodMode;
   });
+  $("#periodLength").value = clockFromSeconds(state.periodSeconds);
   $("#hornetsRoster").value = rosterText(state.rosters.Hornets);
   $("#opponentRoster").value = rosterText(state.rosters.Opponent);
   $("#orientationLabel").textContent =
@@ -384,11 +392,11 @@ function startClockTimer() {
   stopClockTimer();
   clockTimer = setInterval(() => {
     const next = secondsFromClock(state.lastTime) - 1;
-    state.lastTime = clockFromSeconds(next);
     if (next <= 0) {
-      state.clockRunning = false;
-      stopClockTimer();
+      handleClockExpired();
+      return;
     }
+    state.lastTime = clockFromSeconds(next);
     persist();
     renderScore();
     liveClockTicks += 1;
@@ -403,6 +411,24 @@ function stopClockTimer() {
 
 function canAdvancePeriod() {
   return state.period < maxPeriods() || scoreFor("Hornets") === scoreFor("Opponent");
+}
+
+function handleClockExpired() {
+  state.clockRunning = false;
+  stopClockTimer();
+  if (canAdvancePeriod()) {
+    state.period += 1;
+    state.lastTime = clockFromSeconds(state.periodSeconds);
+    persist();
+    render();
+    publishLiveSoon();
+    return;
+  }
+  state.lastTime = "0:00";
+  persist();
+  render();
+  publishLiveSoon();
+  showExportDialog("Game over. Save or export the final game data.");
 }
 
 function changePeriod(delta) {
@@ -520,6 +546,7 @@ function publicGameState() {
     updatedAt: new Date().toISOString(),
     period: state.period,
     periodMode: state.periodMode,
+    periodSeconds: state.periodSeconds,
     lastTime: state.lastTime,
     clockRunning: state.clockRunning,
     courtOrientation: state.courtOrientation,
@@ -606,6 +633,40 @@ function publishLiveSoon() {
     persist();
     renderScore();
   });
+}
+
+function gameDataText() {
+  return JSON.stringify(publicGameState(), null, 2);
+}
+
+function exportFileName() {
+  const teams = `${teamName("Hornets")}-vs-${teamName("Opponent")}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `${teams || "fireplug-game"}-${new Date().toISOString().slice(0, 10)}.json`;
+}
+
+function showExportDialog(message = "Save or export the current game data.") {
+  $("#exportStatus").textContent = message;
+  $("#exportText").value = gameDataText();
+  $("#exportDialog").showModal();
+}
+
+async function copyExportData() {
+  await navigator.clipboard?.writeText($("#exportText").value || gameDataText());
+  $("#exportStatus").textContent = "Game data copied.";
+}
+
+function downloadExportData() {
+  const blob = new Blob([$("#exportText").value || gameDataText()], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = exportFileName();
+  link.click();
+  URL.revokeObjectURL(url);
+  $("#exportStatus").textContent = "Game data saved.";
 }
 
 function saveDraft() {
@@ -738,9 +799,18 @@ function wireEvents() {
     const rosters = state.rosters;
     const teamNames = state.teamNames;
     const periodMode = state.periodMode;
+    const periodSeconds = state.periodSeconds;
     const courtOrientation = state.courtOrientation;
     const live = state.live;
-    Object.assign(state, defaultState(), { rosters, teamNames, periodMode, courtOrientation, live });
+    Object.assign(state, defaultState(), {
+      rosters,
+      teamNames,
+      periodMode,
+      periodSeconds,
+      lastTime: clockFromSeconds(periodSeconds),
+      courtOrientation,
+      live,
+    });
     persist();
     resetDraft();
     render();
@@ -748,9 +818,11 @@ function wireEvents() {
   });
 
   $("#exportBtn").addEventListener("click", () => {
-    $("#exportText").value = JSON.stringify(state, null, 2);
-    $("#exportDialog").showModal();
+    showExportDialog();
   });
+
+  $("#copyExportBtn").addEventListener("click", copyExportData);
+  $("#downloadExportBtn").addEventListener("click", downloadExportData);
 
   $("#saveRosterBtn").addEventListener("click", () => {
     const hornetsRoster = parseRoster($("#hornetsRoster").value);
@@ -763,6 +835,8 @@ function wireEvents() {
     state.teamNames.Opponent = sanitizeTeamName($("#awayTeamName").value, "Opponent");
     state.periodMode = $("input[name='periodMode']:checked")?.value === "halves" ? "halves" : "quarters";
     state.period = Math.min(state.period, maxPeriods());
+    state.periodSeconds = periodClockLength($("#periodLength").value);
+    if (state.events.length === 0) state.lastTime = clockFromSeconds(state.periodSeconds);
     state.rosters.Hornets = hornetsRoster;
     state.rosters.Opponent = opponentRoster;
     persist();

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=9">
+    <link rel="stylesheet" href="styles.css?v=10">
   </head>
   <body>
     <main class="shell">
@@ -83,7 +83,7 @@
                 <path class="hash" d="M19 34h-2.3M31 34h2.3M19 38h-2.3M31 38h2.3M19 42h-2.3M31 42h2.3" />
                 <line x1="22" y1="43" x2="28" y2="43" />
                 <circle class="rim-line" cx="25" cy="41.75" r="0.75" />
-                <path d="M5.96 46.5V37.95M44.04 46.5V37.95M5.96 37.95A19.75 19.75 0 0 1 44.04 37.95" />
+                <path d="M5.96 46.5V37.95C8 28.2 15.8 22 25 22C34.2 22 42 28.2 44.04 37.95V46.5" />
                 <line class="midcourt" x1="0.5" y1="0.5" x2="49.5" y2="0.5" />
                 <path class="center-mark" d="M19 0.5a6 6 0 0 0 12 0" />
               </svg>
@@ -153,7 +153,7 @@
               <path class="hash" d="M19 34h-2.3M31 34h2.3M19 38h-2.3M31 38h2.3M19 42h-2.3M31 42h2.3" />
               <line x1="22" y1="43" x2="28" y2="43" />
               <circle class="rim-line" cx="25" cy="41.75" r="0.75" />
-              <path d="M5.96 46.5V37.95M44.04 46.5V37.95M5.96 37.95A19.75 19.75 0 0 1 44.04 37.95" />
+              <path d="M5.96 46.5V37.95C8 28.2 15.8 22 25 22C34.2 22 42 28.2 44.04 37.95V46.5" />
               <line class="midcourt" x1="0.5" y1="0.5" x2="49.5" y2="0.5" />
               <path class="center-mark" d="M19 0.5a6 6 0 0 0 12 0" />
             </svg>
@@ -196,6 +196,10 @@
               <span>Halves</span>
             </label>
           </fieldset>
+          <label>
+            <span>Period length</span>
+            <input id="periodLength" inputmode="numeric" placeholder="8:00">
+          </label>
           <div class="orientation-row">
             <div>
               <span>Shot map orientation</span>
@@ -211,7 +215,12 @@
     <dialog id="exportDialog">
       <form method="dialog">
         <h2>Game Data</h2>
+        <p id="exportStatus">Save or export the current game data.</p>
         <textarea id="exportText" readonly></textarea>
+        <div class="dialog-actions">
+          <button class="text-btn" type="button" id="copyExportBtn">Copy</button>
+          <button class="text-btn" type="button" id="downloadExportBtn">Download</button>
+        </div>
         <button class="save-btn">Close</button>
       </form>
     </dialog>
@@ -258,6 +267,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=9" type="module"></script>
+    <script src="app.js?v=10" type="module"></script>
   </body>
 </html>
