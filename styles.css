@@ -543,7 +543,7 @@ textarea {
 
 .setup-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
 }
 
@@ -591,6 +591,22 @@ textarea {
   font-size: 18px;
   font-weight: 850;
   line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .setup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .period-field {
+    grid-template-columns: 1fr;
+  }
+
+  .roster-form textarea,
+  .setup-grid input {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 #rosterStatus {

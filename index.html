@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="stylesheet" href="styles.css?v=6">
   </head>
   <body>
     <main class="shell">
@@ -78,7 +78,6 @@
                 <path class="hash" d="M19 34h-2.3M31 34h2.3M19 38h-2.3M31 38h2.3M19 42h-2.3M31 42h2.3" />
                 <line x1="22" y1="43" x2="28" y2="43" />
                 <circle class="rim-line" cx="25" cy="41.75" r="0.75" />
-                <path d="M21 41.75a4 4 0 0 0 8 0" />
                 <path d="M3 46.5v-13.7M47 46.5v-13.7M3 32.8a23.75 23.75 0 0 1 44 0" />
                 <line class="midcourt" x1="0.5" y1="0.5" x2="49.5" y2="0.5" />
                 <path class="center-mark" d="M19 0.5a6 6 0 0 0 12 0" />
@@ -158,7 +157,6 @@
               <path class="hash" d="M19 34h-2.3M31 34h2.3M19 38h-2.3M31 38h2.3M19 42h-2.3M31 42h2.3" />
               <line x1="22" y1="43" x2="28" y2="43" />
               <circle class="rim-line" cx="25" cy="41.75" r="0.75" />
-              <path d="M21 41.75a4 4 0 0 0 8 0" />
               <path d="M3 46.5v-13.7M47 46.5v-13.7M3 32.8a23.75 23.75 0 0 1 44 0" />
               <line class="midcourt" x1="0.5" y1="0.5" x2="49.5" y2="0.5" />
               <path class="center-mark" d="M19 0.5a6 6 0 0 0 12 0" />
@@ -196,11 +194,11 @@
           </fieldset>
           <label>
             <span id="homeRosterLabel">Hornets roster</span>
-            <textarea id="hornetsRoster" inputmode="numeric"></textarea>
+            <textarea id="hornetsRoster" autocomplete="off" autocapitalize="words" spellcheck="false"></textarea>
           </label>
           <label>
             <span id="awayRosterLabel">Opponent roster</span>
-            <textarea id="opponentRoster" inputmode="numeric"></textarea>
+            <textarea id="opponentRoster" autocomplete="off" autocapitalize="words" spellcheck="false"></textarea>
           </label>
           <p id="rosterStatus" role="status"></p>
         </form>
@@ -215,6 +213,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=5" type="module"></script>
+    <script src="app.js?v=6" type="module"></script>
   </body>
 </html>
