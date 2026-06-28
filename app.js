@@ -2,6 +2,7 @@ const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
 const MAX_CLOCK_SECONDS = 20 * 60;
 const HIGH_SCHOOL_THREE_RADIUS = 19.75;
+const ORIENTATIONS = [0, 90, 180, 270];
 const DEFAULT_ROSTERS = {
   Hornets: [0, 1, 2, 3, 5, 7, 10, 11, 12, 14, 21, 24].map((number) => ({ number, name: "" })),
   Opponent: [1, 2, 3, 4, 5, 10, 11, 12, 20, 22, 23, 33].map((number) => ({ number, name: "" })),
@@ -55,15 +56,14 @@ function loadState() {
 
 function migrateState(saved) {
   const periodMode = saved?.periodMode === "halves" ? "halves" : "quarters";
-  const periodLimit = periodMode === "halves" ? 2 : 4;
   return {
     ...defaultState(),
     ...saved,
-    period: Math.min(Math.max(Number(saved?.period) || 1, 1), periodLimit),
+    period: Math.max(Number(saved?.period) || 1, 1),
     periodMode,
     lastTime: normalizeClock(saved?.lastTime || "8:00"),
     clockRunning: false,
-    courtOrientation: saved?.courtOrientation === 180 ? 180 : 0,
+    courtOrientation: ORIENTATIONS.includes(saved?.courtOrientation) ? saved.courtOrientation : 0,
     shotFilters: {
       team: ["Hornets", "Opponent", "all"].includes(saved?.shotFilters?.team) ? saved.shotFilters.team : "all",
       player: "all",
@@ -107,8 +107,10 @@ function maxPeriods() {
   return state.periodMode === "halves" ? 2 : 4;
 }
 
-function periodPrefix() {
-  return state.periodMode === "halves" ? "H" : "Q";
+function periodLabel(period = state.period, mode = state.periodMode) {
+  const regulation = mode === "halves" ? 2 : 4;
+  if (period > regulation) return `OT${period - regulation}`;
+  return `${mode === "halves" ? "H" : "Q"}${period}`;
 }
 
 function normalizeClock(value) {
@@ -135,11 +137,12 @@ function shotsFor(team = "Hornets") {
 function statsForPlayer(player) {
   const events = state.events.filter((event) => event.team === "Hornets" && event.player === player);
   const shots = events.filter((event) => event.action === "shot");
-  const threes = shots.filter((event) => event.points === 3);
+  const fieldShots = shots.filter((event) => event.shotType !== "freeThrow");
+  const threes = fieldShots.filter((event) => event.points === 3);
   return {
     points: shots.filter((event) => event.made).reduce((sum, event) => sum + event.points, 0),
-    fgMade: shots.filter((event) => event.made).length,
-    fgAtt: shots.length,
+    fgMade: fieldShots.filter((event) => event.made).length,
+    fgAtt: fieldShots.length,
     threeMade: threes.filter((event) => event.made).length,
     threeAtt: threes.length,
     rebounds: events.filter((event) => event.action === "rebound").length,
@@ -186,15 +189,27 @@ function courtRotationFor(team) {
 }
 
 function toBaseShotLocation(x, y, team) {
-  return courtRotationFor(team) === 180 ? { x: 100 - x, y: 100 - y } : { x, y };
+  const rotation = courtRotationFor(team);
+  if (rotation === 90) return { x: y, y: 100 - x };
+  if (rotation === 180) return { x: 100 - x, y: 100 - y };
+  if (rotation === 270) return { x: 100 - y, y: x };
+  return { x, y };
 }
 
 function toVisualShotLocation(location, team) {
-  return courtRotationFor(team) === 180 ? { x: 100 - location.x, y: 100 - location.y } : location;
+  const rotation = courtRotationFor(team);
+  if (rotation === 90) return { x: 100 - location.y, y: location.x };
+  if (rotation === 180) return { x: 100 - location.x, y: 100 - location.y };
+  if (rotation === 270) return { x: location.y, y: 100 - location.x };
+  return location;
 }
 
 function applyCourtOrientation(court, team) {
-  court.classList.toggle("rotated", courtRotationFor(team) === 180);
+  court.classList.remove("rotated", "rotated-right", "rotated-left");
+  const rotation = courtRotationFor(team);
+  if (rotation === 180) court.classList.add("rotated");
+  if (rotation === 90) court.classList.add("rotated-right");
+  if (rotation === 270) court.classList.add("rotated-left");
 }
 
 function setStep(nextStep) {
@@ -220,9 +235,10 @@ function renderScore() {
   $("#awayPlayersLabel").textContent = teamName("Opponent");
   $("#hornetsScore").textContent = scoreFor("Hornets");
   $("#opponentScore").textContent = scoreFor("Opponent");
-  $("#periodLabel").textContent = `${periodPrefix()}${state.period}`;
+  $("#periodLabel").textContent = periodLabel();
   $("#clockLabel").textContent = state.lastTime;
   $("#adjustClockDisplay").textContent = state.lastTime;
+  $("#adjustPeriodDisplay").textContent = periodLabel();
   $("#clockToggle").classList.toggle("running", state.clockRunning);
   $("#clockToggle").setAttribute("aria-label", state.clockRunning ? "Pause clock" : "Start clock");
   $("#undoBtn").disabled = state.events.length === 0;
@@ -289,7 +305,16 @@ function renderRoster() {
   $("#hornetsRoster").value = rosterText(state.rosters.Hornets);
   $("#opponentRoster").value = rosterText(state.rosters.Opponent);
   $("#orientationLabel").textContent =
-    state.courtOrientation === 180 ? `${teamName("Hornets")} basket at top` : `${teamName("Hornets")} basket at bottom`;
+    `${teamName("Hornets")} basket at ${orientationName(state.courtOrientation)}`;
+}
+
+function orientationName(rotation) {
+  return {
+    0: "bottom",
+    90: "right",
+    180: "top",
+    270: "left",
+  }[rotation] || "bottom";
 }
 
 function rosterText(roster) {
@@ -361,12 +386,31 @@ function stopClockTimer() {
   clockTimer = null;
 }
 
+function canAdvancePeriod() {
+  return state.period < maxPeriods() || scoreFor("Hornets") === scoreFor("Opponent");
+}
+
+function changePeriod(delta) {
+  state.clockRunning = false;
+  stopClockTimer();
+  if (delta < 0) {
+    state.period = Math.max(1, state.period - 1);
+  } else if (canAdvancePeriod()) {
+    state.period += 1;
+  }
+  persist();
+  render();
+}
+
 function periodLabelFor(event) {
-  return `${event.periodMode === "halves" ? "H" : "Q"}${event.period}`;
+  return periodLabel(event.period, event.periodMode || "quarters");
 }
 
 function actionText(event) {
-  if (event.action === "shot") return `${event.made ? "made" : "missed"} ${event.points} (${event.location.zone})`;
+  if (event.action === "shot") {
+    if (event.shotType === "freeThrow") return `${event.made ? "made" : "missed"} free throw`;
+    return `${event.made ? "made" : "missed"} ${event.points} (${event.location.zone})`;
+  }
   return event.action;
 }
 
@@ -397,7 +441,7 @@ function renderShotChart() {
   const court = $("#reviewCourt");
   court.querySelectorAll(".review-shot").forEach((node) => node.remove());
   const filteredShots = state.events.filter((event) => {
-    if (event.action !== "shot") return false;
+    if (event.action !== "shot" || event.shotType === "freeThrow" || !event.location) return false;
     if (state.shotFilters.team !== "all" && event.team !== state.shotFilters.team) return false;
     if (state.shotFilters.player !== "all") {
       const [team, player] = state.shotFilters.player.split(":");
@@ -468,8 +512,11 @@ function saveDraft() {
   };
   if (draft.action === "shot") {
     event.made = draft.made;
-    event.points = draft.location.points;
-    event.location = draft.location;
+    event.shotType = draft.shotType || "fieldGoal";
+    event.points = draft.points;
+    if (draft.location) {
+      event.location = draft.location;
+    }
   }
   state.events.push(event);
   persist();
@@ -499,11 +546,22 @@ function wireEvents() {
     const x = ((event.clientX - rect.left) / rect.width) * 100;
     const y = ((event.clientY - rect.top) / rect.height) * 100;
     const base = toBaseShotLocation(x, y, draft.team);
-    draft.location = { x: Math.round(base.x * 10) / 10, y: Math.round(base.y * 10) / 10, ...classifyShot(base.x, base.y) };
+    const shot = classifyShot(base.x, base.y);
+    draft.shotType = "fieldGoal";
+    draft.points = shot.points;
+    draft.location = { x: Math.round(base.x * 10) / 10, y: Math.round(base.y * 10) / 10, ...shot };
     const marker = $("#pendingShotMarker");
     marker.style.left = `${x}%`;
     marker.style.top = `${y}%`;
     marker.style.display = "block";
+    setStep("result");
+  });
+
+  $("#freeThrowBtn").addEventListener("click", () => {
+    draft.shotType = "freeThrow";
+    draft.points = 1;
+    draft.location = null;
+    $("#pendingShotMarker").style.display = "none";
     setStep("result");
   });
 
@@ -542,21 +600,9 @@ function wireEvents() {
     else if (step === "result") setStep("location");
   });
 
-  $("#periodDown").addEventListener("click", () => {
-    state.clockRunning = false;
-    stopClockTimer();
-    state.period = Math.max(1, state.period - 1);
-    persist();
-    render();
-  });
+  $("#periodMinus").addEventListener("click", () => changePeriod(-1));
 
-  $("#periodUp").addEventListener("click", () => {
-    state.clockRunning = false;
-    stopClockTimer();
-    state.period = Math.min(maxPeriods(), state.period + 1);
-    persist();
-    render();
-  });
+  $("#periodPlus").addEventListener("click", () => changePeriod(1));
 
   $$(".tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -598,11 +644,12 @@ function wireEvents() {
     state.rosters.Opponent = opponentRoster;
     persist();
     render();
-    $("#rosterStatus").textContent = "Roster saved.";
+    $("#rosterStatus").textContent = "Settings saved.";
   });
 
   $("#rotateCourtBtn").addEventListener("click", () => {
-    state.courtOrientation = state.courtOrientation === 180 ? 0 : 180;
+    const index = ORIENTATIONS.indexOf(state.courtOrientation);
+    state.courtOrientation = ORIENTATIONS[(index + 1) % ORIENTATIONS.length];
     persist();
     render();
   });

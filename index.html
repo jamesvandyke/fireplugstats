@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=7">
+    <link rel="stylesheet" href="styles.css?v=8">
   </head>
   <body>
     <main class="shell">
@@ -16,7 +16,6 @@
           <strong id="hornetsScore">0</strong>
         </section>
         <section class="clock-card">
-          <button class="period-btn" id="periodDown" aria-label="Previous period">‹</button>
           <div class="clock-center">
             <span id="periodLabel">Q1</span>
             <div class="clock-row">
@@ -26,7 +25,6 @@
               <button id="clockAdjustBtn" class="clock-adjust" aria-label="Adjust game clock">+/-</button>
             </div>
           </div>
-          <button class="period-btn" id="periodUp" aria-label="Next period">›</button>
         </section>
         <section class="score-card away">
           <span class="team-name" id="awayTeamLabel">Opponent</span>
@@ -39,7 +37,7 @@
         <button class="tab" data-view="box">Box</button>
         <button class="tab" data-view="plays">Plays</button>
         <button class="tab" data-view="shots">Shots</button>
-        <button class="tab" data-view="roster">Roster</button>
+        <button class="tab" data-view="roster">Settings</button>
       </nav>
 
       <section class="view active" id="trackView">
@@ -74,6 +72,7 @@
           </div>
 
           <div class="step" id="locationStep">
+            <button class="free-throw-btn" id="freeThrowBtn">Free Throw</button>
             <button class="court" id="shotCourt" aria-label="Shot location">
               <svg class="court-lines" viewBox="0 0 50 47" aria-hidden="true">
                 <rect x="0.5" y="0.5" width="49" height="46" />
@@ -83,7 +82,7 @@
                 <path class="hash" d="M19 34h-2.3M31 34h2.3M19 38h-2.3M31 38h2.3M19 42h-2.3M31 42h2.3" />
                 <line x1="22" y1="43" x2="28" y2="43" />
                 <circle class="rim-line" cx="25" cy="41.75" r="0.75" />
-                <path d="M5.96 46.5A19.75 19.75 0 1 1 44.04 46.5" />
+                <path d="M5.96 46.5V37.95M44.04 46.5V37.95M5.96 37.95A19.75 19.75 0 0 1 44.04 37.95" />
                 <line class="midcourt" x1="0.5" y1="0.5" x2="49.5" y2="0.5" />
                 <path class="center-mark" d="M19 0.5a6 6 0 0 0 12 0" />
               </svg>
@@ -153,7 +152,7 @@
               <path class="hash" d="M19 34h-2.3M31 34h2.3M19 38h-2.3M31 38h2.3M19 42h-2.3M31 42h2.3" />
               <line x1="22" y1="43" x2="28" y2="43" />
               <circle class="rim-line" cx="25" cy="41.75" r="0.75" />
-              <path d="M5.96 46.5A19.75 19.75 0 1 1 44.04 46.5" />
+              <path d="M5.96 46.5V37.95M44.04 46.5V37.95M5.96 37.95A19.75 19.75 0 0 1 44.04 37.95" />
               <line class="midcourt" x1="0.5" y1="0.5" x2="49.5" y2="0.5" />
               <path class="center-mark" d="M19 0.5a6 6 0 0 0 12 0" />
             </svg>
@@ -163,7 +162,7 @@
 
       <section class="view" id="rosterView">
         <div class="stats-head">
-          <h1>Roster</h1>
+          <h1>Settings</h1>
           <button class="text-btn" id="saveRosterBtn">Save</button>
         </div>
         <form class="roster-form" id="rosterForm">
@@ -177,6 +176,14 @@
               <input id="awayTeamName" maxlength="24">
             </label>
           </div>
+          <label>
+            <span id="homeRosterLabel">Hornets roster</span>
+            <textarea id="hornetsRoster" autocomplete="off" autocapitalize="words" spellcheck="false"></textarea>
+          </label>
+          <label>
+            <span id="awayRosterLabel">Opponent roster</span>
+            <textarea id="opponentRoster" autocomplete="off" autocapitalize="words" spellcheck="false"></textarea>
+          </label>
           <fieldset class="period-field">
             <legend>Periods</legend>
             <label>
@@ -195,14 +202,6 @@
             </div>
             <button class="text-btn" type="button" id="rotateCourtBtn">Rotate</button>
           </div>
-          <label>
-            <span id="homeRosterLabel">Hornets roster</span>
-            <textarea id="hornetsRoster" autocomplete="off" autocapitalize="words" spellcheck="false"></textarea>
-          </label>
-          <label>
-            <span id="awayRosterLabel">Opponent roster</span>
-            <textarea id="opponentRoster" autocomplete="off" autocapitalize="words" spellcheck="false"></textarea>
-          </label>
           <p id="rosterStatus" role="status"></p>
         </form>
       </section>
@@ -219,6 +218,14 @@
     <dialog id="clockDialog">
       <form method="dialog">
         <h2>Game Clock</h2>
+        <div class="period-adjust">
+          <button class="time-btn" type="button" id="periodMinus">-</button>
+          <div>
+            <span>Period</span>
+            <strong id="adjustPeriodDisplay">Q1</strong>
+          </div>
+          <button class="time-btn" type="button" id="periodPlus">+</button>
+        </div>
         <div class="time-picker">
           <div class="time-display">
             <span>Time</span>
@@ -226,12 +233,10 @@
           </div>
           <div class="time-grid">
             <button class="time-btn" type="button" data-clock-delta="60">+1m</button>
-            <button class="time-btn" type="button" data-clock-delta="15">+15</button>
-            <button class="time-btn" type="button" data-clock-delta="5">+5</button>
+            <button class="time-btn" type="button" data-clock-delta="10">+10</button>
             <button class="time-btn" type="button" data-clock-delta="1">+1</button>
             <button class="time-btn" type="button" data-clock-delta="-60">-1m</button>
-            <button class="time-btn" type="button" data-clock-delta="-15">-15</button>
-            <button class="time-btn" type="button" data-clock-delta="-5">-5</button>
+            <button class="time-btn" type="button" data-clock-delta="-10">-10</button>
             <button class="time-btn" type="button" data-clock-delta="-1">-1</button>
           </div>
         </div>
@@ -239,6 +244,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=7" type="module"></script>
+    <script src="app.js?v=8" type="module"></script>
   </body>
 </html>

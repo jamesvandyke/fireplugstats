@@ -88,7 +88,7 @@ button {
 }
 
 .clock-card {
-  grid-template-columns: 44px 1fr 44px;
+  grid-template-columns: 1fr;
 }
 
 .clock-center {
@@ -99,7 +99,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .clock-toggle,
@@ -111,7 +111,7 @@ button {
 }
 
 .clock-toggle {
-  min-width: 74px;
+  min-width: 94px;
   min-height: 46px;
   padding: 0;
 }
@@ -121,8 +121,8 @@ button {
 }
 
 .clock-adjust {
-  min-width: 38px;
-  min-height: 38px;
+  min-width: 48px;
+  min-height: 44px;
   background: #eee6db;
   font-size: 12px;
   font-weight: 950;
@@ -327,6 +327,18 @@ p {
   background: var(--missed);
 }
 
+.free-throw-btn {
+  width: 100%;
+  min-height: 64px;
+  margin-bottom: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ink);
+  color: white;
+  font-size: 24px;
+  font-weight: 950;
+}
+
 .court {
   position: relative;
   width: 100%;
@@ -361,6 +373,16 @@ p {
 
 .court.rotated .court-lines {
   transform: rotate(180deg);
+  transform-origin: center;
+}
+
+.court.rotated-right .court-lines {
+  transform: rotate(90deg) scale(.94);
+  transform-origin: center;
+}
+
+.court.rotated-left .court-lines {
+  transform: rotate(-90deg) scale(.94);
   transform-origin: center;
 }
 
@@ -447,13 +469,43 @@ p {
 
 .time-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
 .time-grid .time-btn {
   min-height: 62px;
   font-size: 20px;
+}
+
+.period-adjust {
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  display: grid;
+  grid-template-columns: 72px 1fr 72px;
+  gap: 10px;
+  align-items: center;
+  text-align: center;
+}
+
+.period-adjust .time-btn {
+  min-height: 56px;
+}
+
+.period-adjust span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.period-adjust strong {
+  display: block;
+  font-size: 30px;
+  line-height: 1.05;
 }
 
 .save-btn {

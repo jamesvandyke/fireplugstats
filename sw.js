@@ -1,5 +1,5 @@
-const CACHE = "fireplug-stats-v7";
-const ASSETS = ["./", "./index.html", "./styles.css?v=7", "./app.js?v=7", "./manifest.webmanifest", "./icon.svg"];
+const CACHE = "fireplug-stats-v8";
+const ASSETS = ["./", "./index.html", "./styles.css?v=8", "./app.js?v=8", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
