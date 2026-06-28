@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "start": "python3 -m http.server 4173",
+    "start": "node server.js",
+    "start:lan": "HOST=0.0.0.0 node server.js",
     "test": "node --test"
   },
   "devDependencies": {}

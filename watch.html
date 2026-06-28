@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#111827">
+    <title>Fireplug Live</title>
+    <link rel="stylesheet" href="styles.css?v=9">
+  </head>
+  <body>
+    <main class="shell watch-shell">
+      <header class="scorebar">
+        <section class="score-card">
+          <span class="team-name" id="homeTeamLabel">Home</span>
+          <strong id="hornetsScore">0</strong>
+        </section>
+        <section class="clock-card">
+          <div class="clock-center">
+            <span id="periodLabel">Q1</span>
+            <strong id="clockLabel">8:00</strong>
+          </div>
+        </section>
+        <section class="score-card away">
+          <span class="team-name" id="awayTeamLabel">Away</span>
+          <strong id="opponentScore">0</strong>
+        </section>
+      </header>
+
+      <p class="watch-meta" id="watchStatus">Connecting...</p>
+
+      <section class="watch-section">
+        <h1>Recent Plays</h1>
+        <ol class="play-list" id="playList"></ol>
+      </section>
+
+      <section class="watch-section">
+        <h1 id="boxTitle">Box Score</h1>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>PTS</th>
+                <th>FG</th>
+                <th>3PT</th>
+                <th>REB</th>
+                <th>STL</th>
+                <th>F</th>
+              </tr>
+            </thead>
+            <tbody id="boxRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="watch.js?v=9" type="module"></script>
+  </body>
+</html>

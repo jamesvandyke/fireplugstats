@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=8">
+    <link rel="stylesheet" href="styles.css?v=9">
   </head>
   <body>
     <main class="shell">
@@ -24,6 +24,7 @@
               </button>
               <button id="clockAdjustBtn" class="clock-adjust" aria-label="Adjust game clock">+/-</button>
             </div>
+            <button id="liveBtn" class="live-btn" type="button">Live</button>
           </div>
         </section>
         <section class="score-card away">
@@ -244,6 +245,19 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=8" type="module"></script>
+    <dialog id="liveDialog">
+      <form method="dialog">
+        <h2>Live Link</h2>
+        <p id="liveStatus">Start a live link for people following along.</p>
+        <input id="liveLink" readonly>
+        <div class="dialog-actions">
+          <button class="text-btn" type="button" id="copyLiveBtn">Copy</button>
+          <button class="text-btn" type="button" id="shareLiveBtn">Share</button>
+        </div>
+        <button class="save-btn">Done</button>
+      </form>
+    </dialog>
+
+    <script src="app.js?v=9" type="module"></script>
   </body>
 </html>

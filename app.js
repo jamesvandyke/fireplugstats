@@ -12,6 +12,7 @@ const state = loadState();
 let draft = {};
 let step = "player";
 let clockTimer = null;
+let liveClockTicks = 0;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -41,6 +42,11 @@ function defaultState() {
     rosters: {
       Hornets: cloneRoster(DEFAULT_ROSTERS.Hornets),
       Opponent: cloneRoster(DEFAULT_ROSTERS.Opponent),
+    },
+    live: {
+      enabled: false,
+      gameId: "",
+      watchUrl: "",
     },
     events: [],
   };
@@ -75,6 +81,11 @@ function migrateState(saved) {
     rosters: {
       Hornets: sanitizeRoster(saved?.rosters?.Hornets || DEFAULT_ROSTERS.Hornets),
       Opponent: sanitizeRoster(saved?.rosters?.Opponent || DEFAULT_ROSTERS.Opponent),
+    },
+    live: {
+      enabled: Boolean(saved?.live?.enabled && saved?.live?.gameId),
+      gameId: String(saved?.live?.gameId || ""),
+      watchUrl: String(saved?.live?.watchUrl || ""),
     },
     events: Array.isArray(saved?.events) ? saved.events : [],
   };
@@ -241,6 +252,8 @@ function renderScore() {
   $("#adjustPeriodDisplay").textContent = periodLabel();
   $("#clockToggle").classList.toggle("running", state.clockRunning);
   $("#clockToggle").setAttribute("aria-label", state.clockRunning ? "Pause clock" : "Start clock");
+  $("#liveBtn").classList.toggle("active", state.live.enabled);
+  $("#liveBtn").textContent = state.live.enabled ? "Live On" : "Live";
   $("#undoBtn").disabled = state.events.length === 0;
 }
 
@@ -378,6 +391,8 @@ function startClockTimer() {
     }
     persist();
     renderScore();
+    liveClockTicks += 1;
+    if (liveClockTicks % 5 === 0) publishLiveSoon();
   }, 1000);
 }
 
@@ -500,6 +515,99 @@ function render() {
   renderShotFilters();
 }
 
+function publicGameState() {
+  return {
+    updatedAt: new Date().toISOString(),
+    period: state.period,
+    periodMode: state.periodMode,
+    lastTime: state.lastTime,
+    clockRunning: state.clockRunning,
+    courtOrientation: state.courtOrientation,
+    teamNames: state.teamNames,
+    rosters: state.rosters,
+    events: state.events,
+  };
+}
+
+function liveWatchUrl(gameId = state.live.gameId) {
+  return `${window.location.origin}/watch.html?game=${encodeURIComponent(gameId)}`;
+}
+
+function createLiveId() {
+  const bytes = new Uint8Array(5);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((byte) => byte.toString(36).padStart(2, "0")).join("").slice(0, 8);
+}
+
+async function publishLiveUpdate() {
+  if (!state.live.enabled || !state.live.gameId) return false;
+  const response = await fetch(`/api/games/${encodeURIComponent(state.live.gameId)}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(publicGameState()),
+  });
+  if (!response.ok) throw new Error("Live update failed.");
+  return true;
+}
+
+async function startLiveLink() {
+  const gameId = state.live.gameId || createLiveId();
+  state.live = {
+    enabled: true,
+    gameId,
+    watchUrl: liveWatchUrl(gameId),
+  };
+  persist();
+  renderScore();
+  $("#liveStatus").textContent = "Starting live link...";
+  $("#liveLink").value = state.live.watchUrl;
+  $("#liveDialog").showModal();
+  try {
+    await publishLiveUpdate();
+    $("#liveStatus").textContent = "Live link is ready. Updates publish as you track the game.";
+  } catch {
+    state.live.enabled = false;
+    persist();
+    renderScore();
+    $("#liveStatus").textContent = "Live link needs the Fireplug live server. Start the app with npm start.";
+  }
+}
+
+function showLiveLink() {
+  $("#liveLink").value = state.live.watchUrl || "";
+  $("#liveStatus").textContent = state.live.enabled
+    ? "Live link is ready. Updates publish as you track the game."
+    : "Start a live link for people following along.";
+  $("#liveDialog").showModal();
+}
+
+async function shareLiveLink() {
+  const url = $("#liveLink").value;
+  if (!url) return;
+  const text = `${teamName("Hornets")} vs ${teamName("Opponent")} live stats`;
+  if (navigator.share) {
+    await navigator.share({ title: "Fireplug Stats", text, url }).catch(() => {});
+  } else {
+    await navigator.clipboard?.writeText(url);
+    $("#liveStatus").textContent = "Live link copied.";
+  }
+}
+
+async function copyLiveLink() {
+  const url = $("#liveLink").value;
+  if (!url) return;
+  await navigator.clipboard?.writeText(url);
+  $("#liveStatus").textContent = "Live link copied.";
+}
+
+function publishLiveSoon() {
+  publishLiveUpdate().catch(() => {
+    state.live.enabled = false;
+    persist();
+    renderScore();
+  });
+}
+
 function saveDraft() {
   const event = {
     id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
@@ -522,6 +630,7 @@ function saveDraft() {
   persist();
   resetDraft();
   render();
+  publishLiveSoon();
 }
 
 function wireEvents() {
@@ -575,15 +684,20 @@ function wireEvents() {
   $$(".time-btn[data-clock-delta]").forEach((button) => {
     button.addEventListener("click", () => {
       changeClock(Number(button.dataset.clockDelta));
+      publishLiveSoon();
     });
   });
 
-  $("#clockToggle").addEventListener("click", toggleClock);
+  $("#clockToggle").addEventListener("click", () => {
+    toggleClock();
+    publishLiveSoon();
+  });
 
   $("#clockAdjustBtn").addEventListener("click", () => {
     state.clockRunning = false;
     stopClockTimer();
     renderScore();
+    publishLiveSoon();
     $("#clockDialog").showModal();
   });
 
@@ -592,6 +706,7 @@ function wireEvents() {
     persist();
     resetDraft();
     render();
+    publishLiveSoon();
   });
 
   $("#backBtn").addEventListener("click", () => {
@@ -600,9 +715,15 @@ function wireEvents() {
     else if (step === "result") setStep("location");
   });
 
-  $("#periodMinus").addEventListener("click", () => changePeriod(-1));
+  $("#periodMinus").addEventListener("click", () => {
+    changePeriod(-1);
+    publishLiveSoon();
+  });
 
-  $("#periodPlus").addEventListener("click", () => changePeriod(1));
+  $("#periodPlus").addEventListener("click", () => {
+    changePeriod(1);
+    publishLiveSoon();
+  });
 
   $$(".tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -618,10 +739,12 @@ function wireEvents() {
     const teamNames = state.teamNames;
     const periodMode = state.periodMode;
     const courtOrientation = state.courtOrientation;
-    Object.assign(state, defaultState(), { rosters, teamNames, periodMode, courtOrientation });
+    const live = state.live;
+    Object.assign(state, defaultState(), { rosters, teamNames, periodMode, courtOrientation, live });
     persist();
     resetDraft();
     render();
+    publishLiveSoon();
   });
 
   $("#exportBtn").addEventListener("click", () => {
@@ -645,6 +768,7 @@ function wireEvents() {
     persist();
     render();
     $("#rosterStatus").textContent = "Settings saved.";
+    publishLiveSoon();
   });
 
   $("#rotateCourtBtn").addEventListener("click", () => {
@@ -652,6 +776,7 @@ function wireEvents() {
     state.courtOrientation = ORIENTATIONS[(index + 1) % ORIENTATIONS.length];
     persist();
     render();
+    publishLiveSoon();
   });
 
   $("#shotTeamFilter").addEventListener("change", (event) => {
@@ -665,6 +790,14 @@ function wireEvents() {
     state.shotFilters.player = event.target.value;
     renderShotChart();
   });
+
+  $("#liveBtn").addEventListener("click", () => {
+    if (state.live.enabled) showLiveLink();
+    else startLiveLink();
+  });
+
+  $("#copyLiveBtn").addEventListener("click", copyLiveLink);
+  $("#shareLiveBtn").addEventListener("click", shareLiveLink);
 }
 
 wireEvents();
