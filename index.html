@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#111827">
+    <title>Fireplug Stats</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css?v=5">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="scorebar">
+        <section class="score-card">
+          <span class="team-name" id="homeTeamLabel">Hornets</span>
+          <strong id="hornetsScore">0</strong>
+        </section>
+        <section class="clock-card">
+          <button class="period-btn" id="periodDown" aria-label="Previous period">‹</button>
+          <div>
+            <span id="periodLabel">Q1</span>
+            <strong id="clockLabel">8:00</strong>
+          </div>
+          <button class="period-btn" id="periodUp" aria-label="Next period">›</button>
+        </section>
+        <section class="score-card away">
+          <span class="team-name" id="awayTeamLabel">Opponent</span>
+          <strong id="opponentScore">0</strong>
+        </section>
+      </header>
+
+      <nav class="tabs" aria-label="Views">
+        <button class="tab active" data-view="track">Track</button>
+        <button class="tab" data-view="box">Box</button>
+        <button class="tab" data-view="plays">Plays</button>
+        <button class="tab" data-view="shots">Shots</button>
+        <button class="tab" data-view="roster">Roster</button>
+      </nav>
+
+      <section class="view active" id="trackView">
+        <div class="event-panel">
+          <div class="flow-head">
+            <button class="icon-btn" id="backBtn" aria-label="Back">‹</button>
+            <div>
+              <h1 id="stepTitle">Player</h1>
+              <p id="stepMeta">Hornets on top, opponent below</p>
+            </div>
+            <button class="undo-btn" id="undoBtn" disabled>Undo</button>
+          </div>
+
+          <div class="step active" id="playerStep">
+            <section>
+              <h2 id="homePlayersLabel">Hornets</h2>
+              <div class="player-grid" id="hornetsPlayers"></div>
+            </section>
+            <section>
+              <h2 id="awayPlayersLabel">Opponent</h2>
+              <div class="player-grid opponent-grid" id="opponentPlayers"></div>
+            </section>
+          </div>
+
+          <div class="step" id="actionStep">
+            <div class="action-grid">
+              <button class="action-btn" data-action="shot">Shot</button>
+              <button class="action-btn" data-action="rebound">Rebound</button>
+              <button class="action-btn" data-action="steal">Steal</button>
+              <button class="action-btn" data-action="foul">Foul</button>
+            </div>
+          </div>
+
+          <div class="step" id="locationStep">
+            <button class="court" id="shotCourt" aria-label="Shot location">
+              <svg class="court-lines" viewBox="0 0 50 47" aria-hidden="true">
+                <rect x="0.5" y="0.5" width="49" height="46" />
+                <line x1="0.5" y1="46.5" x2="49.5" y2="46.5" />
+                <rect x="19" y="28" width="12" height="18.5" />
+                <path d="M19 28a6 6 0 0 1 12 0" />
+                <path class="hash" d="M19 34h-2.3M31 34h2.3M19 38h-2.3M31 38h2.3M19 42h-2.3M31 42h2.3" />
+                <line x1="22" y1="43" x2="28" y2="43" />
+                <circle class="rim-line" cx="25" cy="41.75" r="0.75" />
+                <path d="M21 41.75a4 4 0 0 0 8 0" />
+                <path d="M3 46.5v-13.7M47 46.5v-13.7M3 32.8a23.75 23.75 0 0 1 44 0" />
+                <line class="midcourt" x1="0.5" y1="0.5" x2="49.5" y2="0.5" />
+                <path class="center-mark" d="M19 0.5a6 6 0 0 0 12 0" />
+              </svg>
+              <span class="shot-marker" id="pendingShotMarker"></span>
+            </button>
+          </div>
+
+          <div class="step" id="resultStep">
+            <div class="action-grid two">
+              <button class="action-btn made" data-made="true">Made</button>
+              <button class="action-btn missed" data-made="false">Missed</button>
+            </div>
+          </div>
+
+          <div class="step" id="timeStep">
+            <div class="time-picker">
+              <div class="time-display">
+                <span>Time</span>
+                <strong id="eventTimeDisplay">8:00</strong>
+              </div>
+              <div class="time-grid">
+                <button class="time-btn" data-time-delta="60">+1m</button>
+                <button class="time-btn" data-time-delta="15">+15</button>
+                <button class="time-btn" data-time-delta="5">+5</button>
+                <button class="time-btn" data-time-delta="1">+1</button>
+                <button class="time-btn" data-time-delta="-60">-1m</button>
+                <button class="time-btn" data-time-delta="-15">-15</button>
+                <button class="time-btn" data-time-delta="-5">-5</button>
+                <button class="time-btn" data-time-delta="-1">-1</button>
+              </div>
+            </div>
+            <button class="save-btn" id="saveEvent">Save</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="boxView">
+        <div class="stats-head">
+          <h1>Box Score</h1>
+          <button class="text-btn" id="newGameBtn">New Game</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>PTS</th>
+                <th>FG</th>
+                <th>3PT</th>
+                <th>REB</th>
+                <th>STL</th>
+                <th>F</th>
+              </tr>
+            </thead>
+            <tbody id="boxRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="playsView">
+        <div class="stats-head">
+          <h1>Play By Play</h1>
+          <button class="text-btn" id="exportBtn">Export</button>
+        </div>
+        <ol class="play-list" id="playList"></ol>
+      </section>
+
+      <section class="view" id="shotsView">
+        <div class="shot-board">
+          <div class="court review-court" id="reviewCourt">
+            <svg class="court-lines" viewBox="0 0 50 47" aria-hidden="true">
+              <rect x="0.5" y="0.5" width="49" height="46" />
+              <line x1="0.5" y1="46.5" x2="49.5" y2="46.5" />
+              <rect x="19" y="28" width="12" height="18.5" />
+              <path d="M19 28a6 6 0 0 1 12 0" />
+              <path class="hash" d="M19 34h-2.3M31 34h2.3M19 38h-2.3M31 38h2.3M19 42h-2.3M31 42h2.3" />
+              <line x1="22" y1="43" x2="28" y2="43" />
+              <circle class="rim-line" cx="25" cy="41.75" r="0.75" />
+              <path d="M21 41.75a4 4 0 0 0 8 0" />
+              <path d="M3 46.5v-13.7M47 46.5v-13.7M3 32.8a23.75 23.75 0 0 1 44 0" />
+              <line class="midcourt" x1="0.5" y1="0.5" x2="49.5" y2="0.5" />
+              <path class="center-mark" d="M19 0.5a6 6 0 0 0 12 0" />
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="rosterView">
+        <div class="stats-head">
+          <h1>Roster</h1>
+          <button class="text-btn" id="saveRosterBtn">Save</button>
+        </div>
+        <form class="roster-form" id="rosterForm">
+          <div class="setup-grid">
+            <label>
+              <span>Home team</span>
+              <input id="homeTeamName" maxlength="24">
+            </label>
+            <label>
+              <span>Away team</span>
+              <input id="awayTeamName" maxlength="24">
+            </label>
+          </div>
+          <fieldset class="period-field">
+            <legend>Periods</legend>
+            <label>
+              <input type="radio" name="periodMode" value="quarters">
+              <span>Quarters</span>
+            </label>
+            <label>
+              <input type="radio" name="periodMode" value="halves">
+              <span>Halves</span>
+            </label>
+          </fieldset>
+          <label>
+            <span id="homeRosterLabel">Hornets roster</span>
+            <textarea id="hornetsRoster" inputmode="numeric"></textarea>
+          </label>
+          <label>
+            <span id="awayRosterLabel">Opponent roster</span>
+            <textarea id="opponentRoster" inputmode="numeric"></textarea>
+          </label>
+          <p id="rosterStatus" role="status"></p>
+        </form>
+      </section>
+    </main>
+
+    <dialog id="exportDialog">
+      <form method="dialog">
+        <h2>Game Data</h2>
+        <textarea id="exportText" readonly></textarea>
+        <button class="save-btn">Close</button>
+      </form>
+    </dialog>
+
+    <script src="app.js?v=5" type="module"></script>
+  </body>
+</html>
