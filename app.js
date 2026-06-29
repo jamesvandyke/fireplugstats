@@ -8,6 +8,10 @@ const DEFAULT_ROSTERS = {
   Hornets: [0, 1, 2, 3, 5, 7, 10, 11, 12, 14, 21, 24].map((number) => ({ number, name: "" })),
   Opponent: [1, 2, 3, 4, 5, 10, 11, 12, 20, 22, 23, 33].map((number) => ({ number, name: "" })),
 };
+const DEFAULT_TEAM_COLORS = {
+  Hornets: "#0f766e",
+  Opponent: "#b45309",
+};
 
 const state = loadState();
 let draft = {};
@@ -34,6 +38,7 @@ function defaultState() {
     lastTime: "8:00",
     clockRunning: false,
     courtOrientation: 0,
+    courtSwappedAtHalf: false,
     shotFilters: {
       team: "all",
       player: "all",
@@ -42,6 +47,7 @@ function defaultState() {
       Hornets: "Hornets",
       Opponent: "Opponent",
     },
+    teamColors: { ...DEFAULT_TEAM_COLORS },
     rosters: {
       Hornets: cloneRoster(DEFAULT_ROSTERS.Hornets),
       Opponent: cloneRoster(DEFAULT_ROSTERS.Opponent),
@@ -74,6 +80,7 @@ function migrateState(saved) {
     lastTime: normalizeClock(saved?.lastTime || "8:00"),
     clockRunning: false,
     courtOrientation: ORIENTATIONS.includes(saved?.courtOrientation) ? saved.courtOrientation : 0,
+    courtSwappedAtHalf: Boolean(saved?.courtSwappedAtHalf),
     shotFilters: {
       team: ["Hornets", "Opponent", "all"].includes(saved?.shotFilters?.team) ? saved.shotFilters.team : "all",
       player: "all",
@@ -81,6 +88,10 @@ function migrateState(saved) {
     teamNames: {
       Hornets: sanitizeTeamName(saved?.teamNames?.Hornets, "Hornets"),
       Opponent: sanitizeTeamName(saved?.teamNames?.Opponent, "Opponent"),
+    },
+    teamColors: {
+      Hornets: sanitizeColor(saved?.teamColors?.Hornets, DEFAULT_TEAM_COLORS.Hornets),
+      Opponent: sanitizeColor(saved?.teamColors?.Opponent, DEFAULT_TEAM_COLORS.Opponent),
     },
     rosters: {
       Hornets: sanitizeRoster(saved?.rosters?.Hornets || DEFAULT_ROSTERS.Hornets),
@@ -149,25 +160,62 @@ function teamName(team) {
   return state.teamNames?.[team] || team;
 }
 
-function shotsFor(team = "Hornets") {
-  return state.events.filter((event) => event.team === team && event.action === "shot");
+function teamColor(team) {
+  return state.teamColors?.[team] || DEFAULT_TEAM_COLORS[team];
 }
 
 function statsForPlayer(team, player) {
-  const events = state.events.filter((event) => event.team === team && event.player === player);
+  return statsForEvents(state.events.filter((event) => event.team === team && event.player === player));
+}
+
+function statsForTeam(team) {
+  return statsForEvents(state.events.filter((event) => event.team === team));
+}
+
+function statsForEvents(events) {
   const shots = events.filter((event) => event.action === "shot");
   const fieldShots = shots.filter((event) => event.shotType !== "freeThrow");
   const threes = fieldShots.filter((event) => event.points === 3);
+  const freeThrows = shots.filter((event) => event.shotType === "freeThrow");
   return {
     points: shots.filter((event) => event.made).reduce((sum, event) => sum + event.points, 0),
     fgMade: fieldShots.filter((event) => event.made).length,
     fgAtt: fieldShots.length,
     threeMade: threes.filter((event) => event.made).length,
     threeAtt: threes.length,
+    ftMade: freeThrows.filter((event) => event.made).length,
+    ftAtt: freeThrows.length,
     rebounds: events.filter((event) => event.action === "rebound").length,
     steals: events.filter((event) => event.action === "steal").length,
     fouls: events.filter((event) => event.action === "foul").length,
   };
+}
+
+function pct(made, attempts) {
+  return attempts ? `${Math.round((made / attempts) * 100)}%` : "--";
+}
+
+function sanitizeColor(value, fallback) {
+  const clean = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(clean) ? clean : fallback;
+}
+
+function textColorFor(background) {
+  const hex = sanitizeColor(background, "#111827").slice(1);
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+  return (red * 299 + green * 587 + blue * 114) / 1000 > 150 ? "#111827" : "#ffffff";
+}
+
+function applyTeamColors() {
+  const root = document.documentElement;
+  const hornets = teamColor("Hornets");
+  const opponent = teamColor("Opponent");
+  root.style.setProperty("--hornets", hornets);
+  root.style.setProperty("--hornets-text", textColorFor(hornets));
+  root.style.setProperty("--away", opponent);
+  root.style.setProperty("--away-text", textColorFor(opponent));
 }
 
 function classifyShot(x, y) {
@@ -196,8 +244,8 @@ function classifyShot(x, y) {
 function renderPlayers() {
   $("#hornetsPlayers").innerHTML = state.rosters.Hornets.map((player) => playerButton("Hornets", player)).join("");
   $("#opponentPlayers").innerHTML = state.rosters.Opponent.map((player) => playerButton("Opponent", player)).join("");
-  $("#reboundHornetsPlayers").innerHTML = state.rosters.Hornets.map((player) => playerButton("Hornets", player, "rebound-player-btn")).join("");
-  $("#reboundOpponentPlayers").innerHTML = state.rosters.Opponent.map((player) => playerButton("Opponent", player, "rebound-player-btn")).join("");
+  $("#reboundHornetsPlayers").innerHTML = state.rosters.Hornets.map((player) => playerButton("Hornets", player, "player-btn rebound-player-btn")).join("");
+  $("#reboundOpponentPlayers").innerHTML = state.rosters.Opponent.map((player) => playerButton("Opponent", player, "player-btn rebound-player-btn")).join("");
 }
 
 function playerButton(team, player, className = "player-btn") {
@@ -250,6 +298,7 @@ function resetDraft() {
 }
 
 function renderScore() {
+  applyTeamColors();
   $("#homeTeamLabel").textContent = teamName("Hornets");
   $("#awayTeamLabel").textContent = teamName("Opponent");
   $("#homePlayersLabel").textContent = teamName("Hornets");
@@ -274,18 +323,26 @@ function renderBox() {
     const rosterNumbers = withEventOnlyPlayers(team);
     const rows = rosterNumbers.map((number) => {
       const stats = statsForPlayer(team, number);
-      return `<tr>
-        <th>${escapeHtml(playerLabel(team, number))}</th>
+      return boxRow(playerLabel(team, number), stats);
+    }).join("");
+    return `<tr class="team-box-row"><th colspan="11">${escapeHtml(teamName(team))}</th></tr>${rows}${boxRow("Team", statsForTeam(team), "total-row")}`;
+  }).join("");
+}
+
+function boxRow(label, stats, className = "") {
+  return `<tr${className ? ` class="${className}"` : ""}>
+        <th>${escapeHtml(label)}</th>
         <td>${stats.points}</td>
         <td>${stats.fgMade}-${stats.fgAtt}</td>
+        <td>${pct(stats.fgMade, stats.fgAtt)}</td>
         <td>${stats.threeMade}-${stats.threeAtt}</td>
+        <td>${pct(stats.threeMade, stats.threeAtt)}</td>
+        <td>${stats.ftMade}-${stats.ftAtt}</td>
+        <td>${pct(stats.ftMade, stats.ftAtt)}</td>
         <td>${stats.rebounds}</td>
         <td>${stats.steals}</td>
         <td>${stats.fouls}</td>
       </tr>`;
-    }).join("");
-    return `<tr class="team-box-row"><th colspan="7">${escapeHtml(teamName(team))}</th></tr>${rows}`;
-  }).join("");
 }
 
 function withEventOnlyPlayers(team) {
@@ -325,6 +382,8 @@ function parseRoster(value) {
 function renderRoster() {
   $("#homeTeamName").value = teamName("Hornets");
   $("#awayTeamName").value = teamName("Opponent");
+  $("#homeTeamColor").value = teamColor("Hornets");
+  $("#awayTeamColor").value = teamColor("Opponent");
   $("#homeRosterLabel").textContent = `${teamName("Hornets")} roster`;
   $("#awayRosterLabel").textContent = `${teamName("Opponent")} roster`;
   $$("input[name='periodMode']").forEach((input) => {
@@ -388,6 +447,17 @@ function changeClock(deltaSeconds) {
   renderScore();
 }
 
+function halftimePeriod(mode = state.periodMode) {
+  return mode === "halves" ? 2 : 3;
+}
+
+function maybeSwapCourtAtHalf(previousPeriod, nextPeriod) {
+  const halfStart = halftimePeriod();
+  if (state.courtSwappedAtHalf || previousPeriod >= halfStart || nextPeriod < halfStart) return;
+  state.courtOrientation = (state.courtOrientation + 180) % 360;
+  state.courtSwappedAtHalf = true;
+}
+
 function toggleClock() {
   state.clockRunning = !state.clockRunning;
   if (state.clockRunning) startClockTimer();
@@ -425,7 +495,9 @@ function handleClockExpired() {
   state.clockRunning = false;
   stopClockTimer();
   if (canAdvancePeriod()) {
+    const previousPeriod = state.period;
     state.period += 1;
+    maybeSwapCourtAtHalf(previousPeriod, state.period);
     state.lastTime = clockFromSeconds(state.periodSeconds);
     persist();
     render();
@@ -442,10 +514,12 @@ function handleClockExpired() {
 function changePeriod(delta) {
   state.clockRunning = false;
   stopClockTimer();
+  const previousPeriod = state.period;
   if (delta < 0) {
     state.period = Math.max(1, state.period - 1);
   } else if (canAdvancePeriod()) {
     state.period += 1;
+    maybeSwapCourtAtHalf(previousPeriod, state.period);
   }
   persist();
   render();
@@ -559,6 +633,7 @@ function publicGameState() {
     clockRunning: state.clockRunning,
     courtOrientation: state.courtOrientation,
     teamNames: state.teamNames,
+    teamColors: state.teamColors,
     rosters: state.rosters,
     events: state.events,
   };
@@ -725,17 +800,42 @@ function saveRebound(team, player) {
   publishLiveSoon();
 }
 
+function saveSettings(showStatus = true) {
+  const hornetsRoster = parseRoster($("#hornetsRoster").value);
+  const opponentRoster = parseRoster($("#opponentRoster").value);
+  if (!hornetsRoster.length || !opponentRoster.length) {
+    $("#rosterStatus").textContent = "Each team needs at least one number.";
+    return false;
+  }
+  state.teamNames.Hornets = sanitizeTeamName($("#homeTeamName").value, "Hornets");
+  state.teamNames.Opponent = sanitizeTeamName($("#awayTeamName").value, "Opponent");
+  state.teamColors.Hornets = sanitizeColor($("#homeTeamColor").value, DEFAULT_TEAM_COLORS.Hornets);
+  state.teamColors.Opponent = sanitizeColor($("#awayTeamColor").value, DEFAULT_TEAM_COLORS.Opponent);
+  state.periodMode = $("input[name='periodMode']:checked")?.value === "halves" ? "halves" : "quarters";
+  state.period = Math.min(state.period, maxPeriods());
+  state.periodSeconds = periodClockLength($("#periodLength").value);
+  if (state.events.length === 0) state.lastTime = clockFromSeconds(state.periodSeconds);
+  state.rosters.Hornets = hornetsRoster;
+  state.rosters.Opponent = opponentRoster;
+  persist();
+  render();
+  $("#rosterStatus").textContent = showStatus ? "Settings saved." : "";
+  publishLiveSoon();
+  return true;
+}
+
 function wireEvents() {
   document.addEventListener("click", (event) => {
+    const rebounder = event.target.closest(".rebound-player-btn");
+    if (rebounder) {
+      saveRebound(rebounder.dataset.team, rebounder.dataset.player);
+      return;
+    }
+
     const player = event.target.closest(".player-btn");
     if (player) {
       draft = { team: player.dataset.team, player: player.dataset.player, time: state.lastTime };
       setStep("action");
-    }
-
-    const rebounder = event.target.closest(".rebound-player-btn");
-    if (rebounder) {
-      saveRebound(rebounder.dataset.team, rebounder.dataset.player);
     }
   });
 
@@ -841,6 +941,7 @@ function wireEvents() {
     if (!confirm("Start a new game?")) return;
     const rosters = state.rosters;
     const teamNames = state.teamNames;
+    const teamColors = state.teamColors;
     const periodMode = state.periodMode;
     const periodSeconds = state.periodSeconds;
     const courtOrientation = state.courtOrientation;
@@ -848,10 +949,12 @@ function wireEvents() {
     Object.assign(state, defaultState(), {
       rosters,
       teamNames,
+      teamColors,
       periodMode,
       periodSeconds,
       lastTime: clockFromSeconds(periodSeconds),
       courtOrientation,
+      courtSwappedAtHalf: false,
       live,
     });
     persist();
@@ -868,24 +971,15 @@ function wireEvents() {
   $("#downloadExportBtn").addEventListener("click", downloadExportData);
 
   $("#saveRosterBtn").addEventListener("click", () => {
-    const hornetsRoster = parseRoster($("#hornetsRoster").value);
-    const opponentRoster = parseRoster($("#opponentRoster").value);
-    if (!hornetsRoster.length || !opponentRoster.length) {
-      $("#rosterStatus").textContent = "Each team needs at least one number.";
-      return;
-    }
-    state.teamNames.Hornets = sanitizeTeamName($("#homeTeamName").value, "Hornets");
-    state.teamNames.Opponent = sanitizeTeamName($("#awayTeamName").value, "Opponent");
-    state.periodMode = $("input[name='periodMode']:checked")?.value === "halves" ? "halves" : "quarters";
-    state.period = Math.min(state.period, maxPeriods());
-    state.periodSeconds = periodClockLength($("#periodLength").value);
-    if (state.events.length === 0) state.lastTime = clockFromSeconds(state.periodSeconds);
-    state.rosters.Hornets = hornetsRoster;
-    state.rosters.Opponent = opponentRoster;
-    persist();
-    render();
-    $("#rosterStatus").textContent = "Settings saved.";
-    publishLiveSoon();
+    saveSettings();
+  });
+
+  $("#rosterForm").addEventListener("focusout", (event) => {
+    if (event.target.matches("input:not([type='radio']):not([type='color']), textarea")) saveSettings(false);
+  });
+
+  $("#rosterForm").addEventListener("change", (event) => {
+    if (event.target.matches("input[type='radio'], input[type='color']")) saveSettings(false);
   });
 
   $("#rotateCourtBtn").addEventListener("click", () => {
