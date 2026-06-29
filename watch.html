@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#111827">
     <title>Fireplug Live</title>
-    <link rel="stylesheet" href="styles.css?v=12">
+    <link rel="stylesheet" href="styles.css?v=13">
   </head>
   <body>
     <main class="shell watch-shell">
@@ -34,6 +34,26 @@
       </section>
 
       <section class="watch-section">
+        <h1>Shot Map</h1>
+        <div class="shot-board">
+          <div class="court review-court" id="watchCourt">
+            <svg class="court-lines" viewBox="0 0 50 47" aria-hidden="true">
+              <rect x="0.5" y="0.5" width="49" height="46" />
+              <line x1="0.5" y1="46.5" x2="49.5" y2="46.5" />
+              <rect x="19" y="28" width="12" height="18.5" />
+              <path d="M19 28a6 6 0 0 1 12 0" />
+              <path class="hash" d="M19 34h-2.3M31 34h2.3M19 38h-2.3M31 38h2.3M19 42h-2.3M31 42h2.3" />
+              <line x1="22" y1="43" x2="28" y2="43" />
+              <circle class="rim-line" cx="25" cy="41.75" r="0.75" />
+              <path d="M5.96 46.5V37.95C8 28.2 15.8 22 25 22C34.2 22 42 28.2 44.04 37.95V46.5" />
+              <line class="midcourt" x1="0.5" y1="0.5" x2="49.5" y2="0.5" />
+              <path class="center-mark" d="M19 0.5a6 6 0 0 0 12 0" />
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <section class="watch-section">
         <h1 id="boxTitle">Box Score</h1>
         <div class="table-wrap">
           <table>
@@ -42,7 +62,11 @@
                 <th>Player</th>
                 <th>PTS</th>
                 <th>FG</th>
+                <th>FG%</th>
                 <th>3PT</th>
+                <th>3P%</th>
+                <th>FT</th>
+                <th>FT%</th>
                 <th>REB</th>
                 <th>STL</th>
                 <th>F</th>
@@ -54,6 +78,6 @@
       </section>
     </main>
 
-    <script src="watch.js?v=12" type="module"></script>
+    <script src="watch.js?v=13" type="module"></script>
   </body>
 </html>

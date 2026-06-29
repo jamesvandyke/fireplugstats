@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=12">
+    <link rel="stylesheet" href="styles.css?v=13">
   </head>
   <body>
     <main class="shell">
@@ -125,7 +125,11 @@
                 <th>Player</th>
                 <th>PTS</th>
                 <th>FG</th>
+                <th>FG%</th>
                 <th>3PT</th>
+                <th>3P%</th>
+                <th>FT</th>
+                <th>FT%</th>
                 <th>REB</th>
                 <th>STL</th>
                 <th>F</th>
@@ -176,7 +180,7 @@
       <section class="view" id="rosterView">
         <div class="stats-head">
           <h1>Settings</h1>
-          <button class="text-btn" id="saveRosterBtn">Save</button>
+          <button class="text-btn" type="button" id="saveRosterBtn">Save</button>
         </div>
         <form class="roster-form" id="rosterForm">
           <div class="setup-grid">
@@ -187,6 +191,16 @@
             <label>
               <span>Away team</span>
               <input id="awayTeamName" maxlength="24">
+            </label>
+          </div>
+          <div class="setup-grid">
+            <label>
+              <span>Home color</span>
+              <input id="homeTeamColor" type="color">
+            </label>
+            <label>
+              <span>Away color</span>
+              <input id="awayTeamColor" type="color">
             </label>
           </div>
           <label>
@@ -279,6 +293,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=12" type="module"></script>
+    <script src="app.js?v=13" type="module"></script>
   </body>
 </html>
