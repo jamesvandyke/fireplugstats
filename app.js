@@ -1,5 +1,4 @@
 const STORAGE_KEY = "fireplug.stats.game.v1";
-const TEAMS_KEY = "fireplug.stats.teams.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
 const MAX_CLOCK_SECONDS = 20 * 60;
 const MIN_CLOCK_SECONDS = 1;
@@ -60,6 +59,7 @@ function defaultState() {
       watchUrl: "",
     },
     events: [],
+    gameStarted: false,
   };
 }
 
@@ -105,6 +105,7 @@ function migrateState(saved) {
       watchUrl: String(saved?.live?.watchUrl || ""),
     },
     events: Array.isArray(saved?.events) ? saved.events : [],
+    gameStarted: Boolean(saved?.gameStarted),
   };
 }
 
@@ -112,59 +113,80 @@ function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-function loadTeamProfiles() {
+async function loadSetupTeams() {
+  const homeSelect = $("#setupHomeTeam");
+  const awaySelect = $("#setupAwayTeam");
+  if (!homeSelect || !awaySelect) return;
   try {
-    return JSON.parse(localStorage.getItem(TEAMS_KEY)) || [];
+    const res = await fetch("/api/teams");
+    if (!res.ok) throw new Error();
+    const teams = await res.json();
+    const options = teams.length
+      ? teams.map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join("")
+      : "";
+    const placeholder = '<option value="">— Enter manually —</option>';
+    homeSelect.innerHTML = placeholder + options;
+    awaySelect.innerHTML = placeholder + options;
   } catch {
-    return [];
+    homeSelect.innerHTML = '<option value="">— Enter manually —</option>';
+    awaySelect.innerHTML = '<option value="">— Enter manually —</option>';
   }
 }
 
-function saveTeamProfiles(list) {
-  localStorage.setItem(TEAMS_KEY, JSON.stringify(list));
+async function applySetupTeam(teamId, side) {
+  if (!teamId) return;
+  try {
+    const res = await fetch(`/api/teams/${encodeURIComponent(teamId)}`);
+    if (!res.ok) return;
+    const team = await res.json();
+    if (side === "home") {
+      $("#setupHomeName").value = team.name || "";
+      $("#setupHomeColor").value = sanitizeColor(team.color, DEFAULT_TEAM_COLORS.Hornets);
+    } else {
+      $("#setupAwayName").value = team.name || "";
+      $("#setupAwayColor").value = sanitizeColor(team.color, DEFAULT_TEAM_COLORS.Opponent);
+    }
+  } catch {}
 }
 
-function saveTeamProfile(team) {
-  const defaultName = teamName(team);
-  const name = prompt(`Save team profile as:`, defaultName);
-  if (!name || !name.trim()) return;
-  const profiles = loadTeamProfiles();
-  const id = String(Date.now());
-  profiles.unshift({
-    id,
-    savedAt: new Date().toISOString(),
-    name: name.trim().slice(0, 32),
-    color: teamColor(team),
-    roster: cloneRoster(state.rosters[team]),
+function showSetup() {
+  const setupView = $("#setupView");
+  const shell = $(".shell");
+  if (!setupView || !shell) return;
+  setupView.style.display = "flex";
+  shell.style.display = "none";
+  $("#setupHomeName").value = teamName("Hornets");
+  $("#setupHomeColor").value = teamColor("Hornets");
+  $("#setupAwayName").value = teamName("Opponent");
+  $("#setupAwayColor").value = teamColor("Opponent");
+  $$("input[name='setupPeriodMode']").forEach((input) => {
+    input.checked = input.value === state.periodMode;
   });
-  saveTeamProfiles(profiles);
-  renderTeamProfiles();
+  $("#setupPeriodLength").value = clockFromSeconds(state.periodSeconds);
+  loadSetupTeams();
 }
 
-function applyTeamProfile(profileId, team) {
-  const profiles = loadTeamProfiles();
-  const profile = profiles.find((p) => p.id === profileId);
-  if (!profile) return;
-  const key = team === "home" ? "Hornets" : "Opponent";
-  state.teamNames[key] = sanitizeTeamName(profile.name, key);
-  state.teamColors[key] = sanitizeColor(profile.color, DEFAULT_TEAM_COLORS[key]);
-  state.rosters[key] = sanitizeRoster(profile.roster);
+function startGame() {
+  const homeName = sanitizeTeamName($("#setupHomeName").value, "Hornets");
+  const awayName = sanitizeTeamName($("#setupAwayName").value, "Opponent");
+  const homeColor = sanitizeColor($("#setupHomeColor").value, DEFAULT_TEAM_COLORS.Hornets);
+  const awayColor = sanitizeColor($("#setupAwayColor").value, DEFAULT_TEAM_COLORS.Opponent);
+  const periodMode = $("input[name='setupPeriodMode']:checked")?.value === "halves" ? "halves" : "quarters";
+  const periodSeconds = periodClockLength($("#setupPeriodLength").value);
+
+  state.teamNames.Hornets = homeName;
+  state.teamNames.Opponent = awayName;
+  state.teamColors.Hornets = homeColor;
+  state.teamColors.Opponent = awayColor;
+  state.periodMode = periodMode;
+  state.periodSeconds = periodSeconds;
+  if (state.events.length === 0) state.lastTime = clockFromSeconds(periodSeconds);
+  state.gameStarted = true;
   persist();
-  renderRoster();
-  render();
-}
 
-function renderTeamProfiles() {
-  const profiles = loadTeamProfiles();
-  const homeSelect = $("#homeProfileSelect");
-  const awaySelect = $("#awayProfileSelect");
-  if (!homeSelect || !awaySelect) return;
-  const options = profiles.length
-    ? profiles.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join("")
-    : "";
-  const placeholder = '<option value="">Load profile…</option>';
-  homeSelect.innerHTML = placeholder + options;
-  awaySelect.innerHTML = placeholder + options;
+  $("#setupView").style.display = "none";
+  $(".shell").style.display = "";
+  render();
 }
 
 async function saveGameToServer() {
@@ -521,7 +543,6 @@ function renderRoster() {
   $("#opponentRoster").value = rosterText(state.rosters.Opponent);
   $("#orientationLabel").textContent =
     `${teamName("Hornets")} basket at ${orientationName(state.courtOrientation)}`;
-  renderTeamProfiles();
 }
 
 function orientationName(rotation) {
@@ -1072,28 +1093,24 @@ function wireEvents() {
     if (!confirm("Start a new game?")) return;
     if (state.events.length > 0) saveGameToServer();
     savedGameId = null;
-    const rosters = state.rosters;
-    const teamNames = state.teamNames;
-    const teamColors = state.teamColors;
-    const periodMode = state.periodMode;
-    const periodSeconds = state.periodSeconds;
     const courtOrientation = state.courtOrientation;
     const live = state.live;
     Object.assign(state, defaultState(), {
-      rosters,
-      teamNames,
-      teamColors,
-      periodMode,
-      periodSeconds,
-      lastTime: clockFromSeconds(periodSeconds),
+      teamNames: state.teamNames,
+      teamColors: state.teamColors,
+      rosters: state.rosters,
+      periodMode: state.periodMode,
+      periodSeconds: state.periodSeconds,
+      lastTime: clockFromSeconds(state.periodSeconds),
       courtOrientation,
       courtSwappedAtHalf: false,
       live,
+      gameStarted: false,
     });
     persist();
     resetDraft();
-    render();
     publishLiveSoon();
+    showSetup();
   });
 
   $("#shareBtn").addEventListener("click", shareSummary);
@@ -1104,19 +1121,6 @@ function wireEvents() {
 
   $("#copyExportBtn").addEventListener("click", copyExportData);
   $("#downloadExportBtn").addEventListener("click", downloadExportData);
-
-  $("#saveHomeProfileBtn").addEventListener("click", () => saveTeamProfile("Hornets"));
-  $("#saveAwayProfileBtn").addEventListener("click", () => saveTeamProfile("Opponent"));
-
-  $("#homeProfileSelect").addEventListener("change", (event) => {
-    if (event.target.value) applyTeamProfile(event.target.value, "home");
-    event.target.value = "";
-  });
-
-  $("#awayProfileSelect").addEventListener("change", (event) => {
-    if (event.target.value) applyTeamProfile(event.target.value, "away");
-    event.target.value = "";
-  });
 
   $("#saveRosterBtn").addEventListener("click", () => {
     saveSettings();
@@ -1159,7 +1163,17 @@ function wireEvents() {
   $("#shareLiveBtn").addEventListener("click", shareLiveLink);
 }
 
+// Setup form events
+$("#setupHomeTeam").addEventListener("change", (e) => applySetupTeam(e.target.value, "home"));
+$("#setupAwayTeam").addEventListener("change", (e) => applySetupTeam(e.target.value, "away"));
+$("#startGameBtn").addEventListener("click", startGame);
+
 wireEvents();
 resetDraft();
-render();
 registerServiceWorker();
+
+if (!state.gameStarted) {
+  showSetup();
+} else {
+  render();
+}

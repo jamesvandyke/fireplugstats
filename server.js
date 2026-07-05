@@ -1,7 +1,7 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
-const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -70,6 +70,11 @@ function savedGameIdFromUrl(url) {
   return match ? match[1] : "";
 }
 
+function teamIdFromUrl(url) {
+  const match = url.pathname.match(/^\/api\/teams\/([a-z0-9-]+)$/i);
+  return match ? match[1] : "";
+}
+
 async function s3Get(key) {
   const command = new GetObjectCommand({ Bucket: BUCKET, Key: key });
   const response = await s3.send(command);
@@ -106,6 +111,30 @@ async function saveGame(id, payload) {
 
 async function getGame(id) {
   return await s3Get(`games/${id}.json`);
+}
+
+async function getTeamIndex() {
+  try {
+    return await s3Get("teams/index.json");
+  } catch {
+    return [];
+  }
+}
+
+async function putTeamIndex(list) {
+  await s3Put("teams/index.json", list);
+}
+
+async function saveTeam(id, payload) {
+  await s3Put(`teams/${id}.json`, payload);
+}
+
+async function getTeam(id) {
+  return await s3Get(`teams/${id}.json`);
+}
+
+async function deleteTeam(id) {
+  await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: `teams/${id}.json` }));
 }
 
 function createSavedGameId() {
@@ -217,6 +246,91 @@ async function handleApi(request, response) {
         sendJson(response, 200, game);
       } catch {
         sendJson(response, 404, { error: "Game not found." });
+      }
+      return;
+    }
+
+    sendJson(response, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  // Teams routes
+  if (url.pathname === "/api/teams" || url.pathname.startsWith("/api/teams/")) {
+    if (!s3) {
+      sendJson(response, 503, { error: "Storage not configured." });
+      return;
+    }
+
+    // GET /api/teams — list all teams
+    if (url.pathname === "/api/teams" && request.method === "GET") {
+      try {
+        sendJson(response, 200, await getTeamIndex());
+      } catch {
+        sendJson(response, 500, { error: "Failed to load teams." });
+      }
+      return;
+    }
+
+    // POST /api/teams — create a team
+    if (url.pathname === "/api/teams" && request.method === "POST") {
+      try {
+        const body = await readBody(request);
+        const { name, color, roster } = JSON.parse(body);
+        const id = createSavedGameId();
+        const now = new Date().toISOString();
+        const team = { id, name, color, roster: roster || [], createdAt: now, updatedAt: now };
+        await saveTeam(id, team);
+        const index = await getTeamIndex();
+        await putTeamIndex([{ id, name, color, playerCount: (roster || []).length, createdAt: now, updatedAt: now }, ...index]);
+        sendJson(response, 201, { id });
+      } catch {
+        sendJson(response, 400, { error: "Failed to create team." });
+      }
+      return;
+    }
+
+    const teamId = teamIdFromUrl(url);
+
+    // GET /api/teams/:id — fetch one team
+    if (teamId && request.method === "GET") {
+      try {
+        sendJson(response, 200, await getTeam(teamId));
+      } catch {
+        sendJson(response, 404, { error: "Team not found." });
+      }
+      return;
+    }
+
+    // PUT /api/teams/:id — update a team
+    if (teamId && request.method === "PUT") {
+      try {
+        const body = await readBody(request);
+        const { name, color, roster } = JSON.parse(body);
+        const existing = await getTeam(teamId);
+        const now = new Date().toISOString();
+        const team = { ...existing, name, color, roster: roster || [], updatedAt: now };
+        await saveTeam(teamId, team);
+        const index = await getTeamIndex();
+        const updated = index.map((t) =>
+          t.id === teamId ? { ...t, name, color, playerCount: (roster || []).length, updatedAt: now } : t
+        );
+        await putTeamIndex(updated);
+        sendJson(response, 200, { ok: true });
+      } catch {
+        sendJson(response, 400, { error: "Failed to update team." });
+      }
+      return;
+    }
+
+    // DELETE /api/teams/:id — delete a team
+    if (teamId && request.method === "DELETE") {
+      try {
+        await deleteTeam(teamId);
+        const index = await getTeamIndex();
+        await putTeamIndex(index.filter((t) => t.id !== teamId));
+        sendJson(response, 200, { ok: true });
+      } catch {
+        sendJson(response, 400, { error: "Failed to delete team." });
       }
       return;
     }

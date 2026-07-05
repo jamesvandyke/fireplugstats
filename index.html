@@ -6,9 +6,48 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=14">
+    <link rel="stylesheet" href="styles.css?v=15">
   </head>
   <body>
+    <div id="setupView" style="display:none">
+      <div class="setup-shell">
+        <h1 class="setup-title">Fireplug Stats</h1>
+        <div class="setup-team-grid">
+          <div class="setup-team-col">
+            <label class="setup-label">Home team</label>
+            <select id="setupHomeTeam" class="setup-team-select"><option value="">— Enter manually —</option></select>
+            <input id="setupHomeName" class="setup-name-input" type="text" maxlength="24" placeholder="Team name" autocomplete="off">
+            <label class="setup-label">Color</label>
+            <input id="setupHomeColor" type="color" class="setup-color-input" value="#0f766e">
+          </div>
+          <div class="setup-team-col">
+            <label class="setup-label">Away team</label>
+            <select id="setupAwayTeam" class="setup-team-select"><option value="">— Enter manually —</option></select>
+            <input id="setupAwayName" class="setup-name-input" type="text" maxlength="24" placeholder="Team name" autocomplete="off">
+            <label class="setup-label">Color</label>
+            <input id="setupAwayColor" type="color" class="setup-color-input" value="#b45309">
+          </div>
+        </div>
+        <fieldset class="setup-period-field">
+          <legend>Periods</legend>
+          <label>
+            <input type="radio" name="setupPeriodMode" value="quarters" checked>
+            <span>Quarters</span>
+          </label>
+          <label>
+            <input type="radio" name="setupPeriodMode" value="halves">
+            <span>Halves</span>
+          </label>
+        </fieldset>
+        <label class="setup-label">
+          Period length
+          <input id="setupPeriodLength" class="setup-period-input" inputmode="numeric" placeholder="8:00" value="8:00">
+        </label>
+        <button class="setup-start-btn" id="startGameBtn" type="button">Start Game</button>
+        <p class="setup-admin-link"><a href="/admin.html">Manage teams</a></p>
+      </div>
+    </div>
+
     <main class="shell">
       <header class="scorebar">
         <section class="score-card">
@@ -183,7 +222,10 @@
       <section class="view" id="rosterView">
         <div class="stats-head">
           <h1>Settings</h1>
-          <button class="text-btn" type="button" id="saveRosterBtn">Save</button>
+          <div class="stats-head-actions">
+            <a href="/admin.html" class="text-btn" style="display:inline-flex;align-items:center;text-decoration:none;min-width:70px;justify-content:center">Teams</a>
+            <button class="text-btn" type="button" id="saveRosterBtn">Save</button>
+          </div>
         </div>
         <form class="roster-form" id="rosterForm">
           <div class="setup-grid">
@@ -204,18 +246,6 @@
             <label>
               <span>Away color</span>
               <input id="awayTeamColor" type="color">
-            </label>
-          </div>
-          <div class="profile-row">
-            <button type="button" class="text-btn profile-save-btn" id="saveHomeProfileBtn">Save home team</button>
-            <label class="profile-load-label">
-              <select id="homeProfileSelect"><option value="">Load profile…</option></select>
-            </label>
-          </div>
-          <div class="profile-row">
-            <button type="button" class="text-btn profile-save-btn" id="saveAwayProfileBtn">Save away team</button>
-            <label class="profile-load-label">
-              <select id="awayProfileSelect"><option value="">Load profile…</option></select>
             </label>
           </div>
           <label>
@@ -312,6 +342,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=14" type="module"></script>
+    <script src="app.js?v=15" type="module"></script>
   </body>
 </html>
