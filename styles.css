@@ -873,3 +873,67 @@ textarea {
     padding-top: 22px;
   }
 }
+
+.stats-head-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.profile-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.profile-save-btn {
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.profile-load-label select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  font-weight: 850;
+}
+
+#historySection {
+  margin-top: 4px;
+}
+
+.history-entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  margin-bottom: 8px;
+}
+
+.history-info strong {
+  display: block;
+  font-size: 15px;
+}
+
+.history-info span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.history-view-btn {
+  min-width: 60px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 900;
+  border-radius: 8px;
+}

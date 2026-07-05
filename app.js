@@ -1,4 +1,5 @@
 const STORAGE_KEY = "fireplug.stats.game.v1";
+const TEAMS_KEY = "fireplug.stats.teams.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
 const MAX_CLOCK_SECONDS = 20 * 60;
 const MIN_CLOCK_SECONDS = 1;
@@ -18,6 +19,7 @@ let draft = {};
 let step = "player";
 let clockTimer = null;
 let liveClockTicks = 0;
+let savedGameId = null;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -108,6 +110,131 @@ function migrateState(saved) {
 
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function loadTeamProfiles() {
+  try {
+    return JSON.parse(localStorage.getItem(TEAMS_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveTeamProfiles(list) {
+  localStorage.setItem(TEAMS_KEY, JSON.stringify(list));
+}
+
+function saveTeamProfile(team) {
+  const defaultName = teamName(team);
+  const name = prompt(`Save team profile as:`, defaultName);
+  if (!name || !name.trim()) return;
+  const profiles = loadTeamProfiles();
+  const id = String(Date.now());
+  profiles.unshift({
+    id,
+    savedAt: new Date().toISOString(),
+    name: name.trim().slice(0, 32),
+    color: teamColor(team),
+    roster: cloneRoster(state.rosters[team]),
+  });
+  saveTeamProfiles(profiles);
+  renderTeamProfiles();
+}
+
+function applyTeamProfile(profileId, team) {
+  const profiles = loadTeamProfiles();
+  const profile = profiles.find((p) => p.id === profileId);
+  if (!profile) return;
+  const key = team === "home" ? "Hornets" : "Opponent";
+  state.teamNames[key] = sanitizeTeamName(profile.name, key);
+  state.teamColors[key] = sanitizeColor(profile.color, DEFAULT_TEAM_COLORS[key]);
+  state.rosters[key] = sanitizeRoster(profile.roster);
+  persist();
+  renderRoster();
+  render();
+}
+
+function renderTeamProfiles() {
+  const profiles = loadTeamProfiles();
+  const homeSelect = $("#homeProfileSelect");
+  const awaySelect = $("#awayProfileSelect");
+  if (!homeSelect || !awaySelect) return;
+  const options = profiles.length
+    ? profiles.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join("")
+    : "";
+  const placeholder = '<option value="">Load profile…</option>';
+  homeSelect.innerHTML = placeholder + options;
+  awaySelect.innerHTML = placeholder + options;
+}
+
+async function saveGameToServer() {
+  if (state.events.length === 0) return null;
+  if (savedGameId) return savedGameId;
+  try {
+    const response = await fetch("/api/saved-games", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(publicGameState()),
+    });
+    if (!response.ok) return null;
+    const { id } = await response.json();
+    savedGameId = id;
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+async function loadPastGames() {
+  try {
+    const response = await fetch("/api/saved-games");
+    if (!response.ok) return [];
+    return await response.json();
+  } catch {
+    return [];
+  }
+}
+
+function renderHistory(games) {
+  const list = $("#pastGamesList");
+  if (!list) return;
+  if (!games.length) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:13px">No saved games yet.</p>';
+    return;
+  }
+  list.innerHTML = games.map((g) => {
+    const home = g.teamNames?.Hornets || "Hornets";
+    const away = g.teamNames?.Opponent || "Opponent";
+    const score = g.finalScore ? `${g.finalScore.Hornets}–${g.finalScore.Opponent}` : "";
+    const date = g.savedAt ? new Date(g.savedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+    return `<div class="history-entry">
+      <div class="history-info">
+        <strong>${escapeHtml(home)} vs ${escapeHtml(away)}</strong>
+        <span>${score ? escapeHtml(score) + " · " : ""}${escapeHtml(date)}</span>
+      </div>
+      <a class="text-btn history-view-btn" href="/summary.html?game=${encodeURIComponent(g.id)}" target="_blank">View</a>
+    </div>`;
+  }).join("");
+}
+
+async function shareSummary() {
+  const shareBtn = $("#shareBtn");
+  if (shareBtn) shareBtn.disabled = true;
+  const id = await saveGameToServer();
+  if (shareBtn) shareBtn.disabled = false;
+  if (!id) {
+    alert("Could not save game to server. Check that storage is configured.");
+    return;
+  }
+  const url = `${window.location.origin}/summary.html?game=${encodeURIComponent(id)}`;
+  const homeName = teamName("Hornets");
+  const awayName = teamName("Opponent");
+  if (navigator.share) {
+    navigator.share({ title: `${homeName} vs ${awayName} — Game Summary`, url }).catch(() => {});
+  } else {
+    await navigator.clipboard?.writeText(url);
+    alert("Summary link copied to clipboard.");
+  }
 }
 
 function registerServiceWorker() {
@@ -394,6 +521,7 @@ function renderRoster() {
   $("#opponentRoster").value = rosterText(state.rosters.Opponent);
   $("#orientationLabel").textContent =
     `${teamName("Hornets")} basket at ${orientationName(state.courtOrientation)}`;
+  renderTeamProfiles();
 }
 
 function orientationName(rotation) {
@@ -934,11 +1062,16 @@ function wireEvents() {
       $$(".tab").forEach((item) => item.classList.toggle("active", item === tab));
       $$(".view").forEach((view) => view.classList.toggle("active", view.id === `${tab.dataset.view}View`));
       render();
+      if (tab.dataset.view === "roster") {
+        loadPastGames().then(renderHistory);
+      }
     });
   });
 
-  $("#newGameBtn").addEventListener("click", () => {
+  $("#newGameBtn").addEventListener("click", async () => {
     if (!confirm("Start a new game?")) return;
+    if (state.events.length > 0) saveGameToServer();
+    savedGameId = null;
     const rosters = state.rosters;
     const teamNames = state.teamNames;
     const teamColors = state.teamColors;
@@ -963,12 +1096,27 @@ function wireEvents() {
     publishLiveSoon();
   });
 
+  $("#shareBtn").addEventListener("click", shareSummary);
+
   $("#exportBtn").addEventListener("click", () => {
     showExportDialog();
   });
 
   $("#copyExportBtn").addEventListener("click", copyExportData);
   $("#downloadExportBtn").addEventListener("click", downloadExportData);
+
+  $("#saveHomeProfileBtn").addEventListener("click", () => saveTeamProfile("Hornets"));
+  $("#saveAwayProfileBtn").addEventListener("click", () => saveTeamProfile("Opponent"));
+
+  $("#homeProfileSelect").addEventListener("change", (event) => {
+    if (event.target.value) applyTeamProfile(event.target.value, "home");
+    event.target.value = "";
+  });
+
+  $("#awayProfileSelect").addEventListener("change", (event) => {
+    if (event.target.value) applyTeamProfile(event.target.value, "away");
+    event.target.value = "";
+  });
 
   $("#saveRosterBtn").addEventListener("click", () => {
     saveSettings();

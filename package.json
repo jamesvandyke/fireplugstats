@@ -4,5 +4,7 @@
     "start:lan": "HOST=0.0.0.0 node server.js",
     "test": "node --test"
   },
-  "devDependencies": {}
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1079.0"
+  }
 }

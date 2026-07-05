@@ -1,11 +1,32 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
 const ROOT = __dirname;
 const games = new Map();
+
+const spacesConfigured =
+  process.env.DO_SPACES_KEY &&
+  process.env.DO_SPACES_SECRET &&
+  process.env.DO_SPACES_ENDPOINT &&
+  process.env.DO_SPACES_BUCKET;
+
+const s3 = spacesConfigured
+  ? new S3Client({
+      endpoint: process.env.DO_SPACES_ENDPOINT,
+      region: "us-east-1",
+      credentials: {
+        accessKeyId: process.env.DO_SPACES_KEY,
+        secretAccessKey: process.env.DO_SPACES_SECRET,
+      },
+      forcePathStyle: false,
+    })
+  : null;
+
+const BUCKET = process.env.DO_SPACES_BUCKET || "";
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -44,6 +65,53 @@ function gameIdFromUrl(url) {
   return match ? match[1] : "";
 }
 
+function savedGameIdFromUrl(url) {
+  const match = url.pathname.match(/^\/api\/saved-games\/([a-z0-9-]+)$/i);
+  return match ? match[1] : "";
+}
+
+async function s3Get(key) {
+  const command = new GetObjectCommand({ Bucket: BUCKET, Key: key });
+  const response = await s3.send(command);
+  const chunks = [];
+  for await (const chunk of response.Body) chunks.push(chunk);
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function s3Put(key, payload) {
+  const command = new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    Body: JSON.stringify(payload),
+    ContentType: "application/json",
+  });
+  await s3.send(command);
+}
+
+async function getIndex() {
+  try {
+    return await s3Get("games/index.json");
+  } catch {
+    return [];
+  }
+}
+
+async function putIndex(list) {
+  await s3Put("games/index.json", list);
+}
+
+async function saveGame(id, payload) {
+  await s3Put(`games/${id}.json`, payload);
+}
+
+async function getGame(id) {
+  return await s3Get(`games/${id}.json`);
+}
+
+function createSavedGameId() {
+  return require("node:crypto").randomBytes(7).toString("hex");
+}
+
 function serveFile(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
   const requestedPath = url.pathname === "/" ? "/index.html" : url.pathname;
@@ -71,36 +139,93 @@ function serveFile(request, response) {
 
 async function handleApi(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
-  const gameId = gameIdFromUrl(url);
 
-  if (!gameId) {
-    sendJson(response, 404, { error: "Not found" });
-    return;
-  }
-
-  if (request.method === "GET") {
-    const game = games.get(gameId);
-    if (!game) {
-      sendJson(response, 404, { error: "Game not found" });
+  // Live game routes
+  if (url.pathname.startsWith("/api/games/")) {
+    const gameId = gameIdFromUrl(url);
+    if (!gameId) {
+      sendJson(response, 404, { error: "Not found" });
       return;
     }
-    sendJson(response, 200, game);
-    return;
-  }
-
-  if (request.method === "PUT") {
-    try {
-      const body = await readBody(request);
-      const game = JSON.parse(body);
-      games.set(gameId, game);
-      sendJson(response, 200, { ok: true });
-    } catch {
-      sendJson(response, 400, { error: "Invalid game data" });
+    if (request.method === "GET") {
+      const game = games.get(gameId);
+      if (!game) { sendJson(response, 404, { error: "Game not found" }); return; }
+      sendJson(response, 200, game);
+      return;
     }
+    if (request.method === "PUT") {
+      try {
+        const body = await readBody(request);
+        games.set(gameId, JSON.parse(body));
+        sendJson(response, 200, { ok: true });
+      } catch {
+        sendJson(response, 400, { error: "Invalid game data" });
+      }
+      return;
+    }
+    sendJson(response, 405, { error: "Method not allowed" });
     return;
   }
 
-  sendJson(response, 405, { error: "Method not allowed" });
+  // Saved games routes
+  if (url.pathname === "/api/saved-games" || url.pathname.startsWith("/api/saved-games/")) {
+    if (!s3) {
+      sendJson(response, 503, { error: "Storage not configured." });
+      return;
+    }
+
+    // POST /api/saved-games — save a completed game
+    if (url.pathname === "/api/saved-games" && request.method === "POST") {
+      try {
+        const body = await readBody(request);
+        const game = JSON.parse(body);
+        const id = createSavedGameId();
+        const savedAt = new Date().toISOString();
+        const homeScore = (game.events || [])
+          .filter((e) => e.team === "Hornets" && e.action === "shot" && e.made)
+          .reduce((sum, e) => sum + e.points, 0);
+        const awayScore = (game.events || [])
+          .filter((e) => e.team === "Opponent" && e.action === "shot" && e.made)
+          .reduce((sum, e) => sum + e.points, 0);
+        const entry = { id, savedAt, teamNames: game.teamNames, finalScore: { Hornets: homeScore, Opponent: awayScore } };
+        await saveGame(id, { ...game, id, savedAt });
+        const index = await getIndex();
+        await putIndex([entry, ...index]);
+        sendJson(response, 201, { id });
+      } catch (err) {
+        sendJson(response, 400, { error: "Failed to save game." });
+      }
+      return;
+    }
+
+    // GET /api/saved-games — list all saved games
+    if (url.pathname === "/api/saved-games" && request.method === "GET") {
+      try {
+        const index = await getIndex();
+        sendJson(response, 200, index);
+      } catch {
+        sendJson(response, 500, { error: "Failed to load games." });
+      }
+      return;
+    }
+
+    // GET /api/saved-games/:id — fetch one saved game
+    const savedId = savedGameIdFromUrl(url);
+    if (savedId && request.method === "GET") {
+      try {
+        const game = await getGame(savedId);
+        sendJson(response, 200, game);
+      } catch {
+        sendJson(response, 404, { error: "Game not found." });
+      }
+      return;
+    }
+
+    sendJson(response, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  sendJson(response, 404, { error: "Not found" });
 }
 
 const server = http.createServer((request, response) => {
@@ -113,4 +238,5 @@ const server = http.createServer((request, response) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Fireplug Stats live server: http://${HOST}:${PORT}`);
+  if (!spacesConfigured) console.warn("Warning: DO Spaces not configured — saved games unavailable.");
 });
