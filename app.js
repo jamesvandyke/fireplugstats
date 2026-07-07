@@ -164,7 +164,15 @@ function showSetup() {
   });
   $("#setupPeriodLength").value = clockFromSeconds(state.periodSeconds);
   loadSetupTeams();
-  loadPastGames().then((games) => renderHistory(games, $("#setupPastGamesList")));
+  const teamFilter = new URLSearchParams(window.location.search).get("team");
+  const titleEl = document.querySelector(".setup-history-title");
+  if (titleEl) titleEl.textContent = teamFilter ? `Games — ${teamFilter}` : "Past Games";
+  loadPastGames().then((games) => {
+    const filtered = teamFilter
+      ? games.filter((g) => g.teamNames?.Hornets === teamFilter || g.teamNames?.Opponent === teamFilter)
+      : games;
+    renderHistory(filtered, $("#setupPastGamesList"));
+  });
 }
 
 function startGame() {

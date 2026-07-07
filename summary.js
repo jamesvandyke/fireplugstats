@@ -45,7 +45,7 @@ function statsForEvents(events) {
 }
 
 function pct(made, attempts) {
-  return attempts ? `${Math.round((made / attempts) * 100)}%` : "--";
+  return attempts ? `${Math.round((made / attempts) * 100)}%` : "—";
 }
 
 function toVisualShotLocation(location, rotation) {
@@ -76,6 +76,22 @@ function withEventOnlyPlayers(game, team) {
   const eventPlayers = (game.events || []).filter((e) => e.team === team).map((e) => e.player);
   return [...new Set([...roster, ...eventPlayers])].sort((a, b) => a - b);
 }
+
+function scoreFor(game, team) {
+  return (game.events || [])
+    .filter((e) => e.team === team && e.action === "shot" && e.made)
+    .reduce((sum, e) => sum + e.points, 0);
+}
+
+function formatDate(iso) {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+// ─── Box score ────────────────────────────────────────────────────────────────
 
 function boxRow(label, stats, className = "") {
   return `<tr${className ? ` class="${className}"` : ""}>
@@ -119,35 +135,143 @@ function renderBoxScore(game) {
   </div>`;
 }
 
+// ─── Shot chart ───────────────────────────────────────────────────────────────
+
 function renderCourtWithShots(game, team) {
   const shots = (game.events || []).filter(
     (e) => e.action === "shot" && e.shotType !== "freeThrow" && e.location && e.team === team
   );
   const rotation = game.courtOrientation || 0;
   const teamRotation = team === "Opponent" ? (rotation + 180) % 360 : rotation;
-
   const rotClass = teamRotation === 180 ? "rotated" : teamRotation === 90 ? "rotated-left" : teamRotation === 270 ? "rotated-right" : "";
   const markers = shots.map((e) => {
     const v = toVisualShotLocation(e.location, teamRotation);
     return `<span class="review-shot${e.made ? " hit" : ""}" style="left:${v.x}%;top:${v.y}%" title="${escapeHtml(playerLabel(game, team, e.player))}"></span>`;
   }).join("");
-
   return `<div class="court review-court ${rotClass}">${COURT_SVG}${markers}</div>`;
 }
 
-function scoreFor(game, team) {
-  return (game.events || [])
-    .filter((e) => e.team === team && e.action === "shot" && e.made)
-    .reduce((sum, e) => sum + e.points, 0);
+// ─── Period scores ────────────────────────────────────────────────────────────
+
+function renderPeriodScores(game) {
+  const events = game.events || [];
+  const maxPeriod = events.reduce((m, e) => Math.max(m, e.period || 0), 0);
+  if (maxPeriod === 0) return "";
+
+  const isHalves = game.periodMode === "halves";
+  const label = (n) => isHalves ? `H${n}` : `Q${n}`;
+  const periods = Array.from({ length: maxPeriod }, (_, i) => i + 1);
+
+  const periodScore = (team, p) =>
+    events.filter((e) => e.team === team && e.action === "shot" && e.made && e.period === p)
+      .reduce((sum, e) => sum + e.points, 0);
+
+  const homeName = game.teamNames?.Hornets || "Hornets";
+  const awayName = game.teamNames?.Opponent || "Opponent";
+  const homeTotal = scoreFor(game, "Hornets");
+  const awayTotal = scoreFor(game, "Opponent");
+
+  const headerCells = periods.map((p) => `<th>${label(p)}</th>`).join("") + `<th class="period-total">T</th>`;
+  const homeCells = periods.map((p) => `<td>${periodScore("Hornets", p)}</td>`).join("") + `<td class="period-total">${homeTotal}</td>`;
+  const awayCells = periods.map((p) => `<td>${periodScore("Opponent", p)}</td>`).join("") + `<td class="period-total">${awayTotal}</td>`;
+
+  return `<div class="summary-box">
+    <p class="summary-section-title">Score by ${isHalves ? "Half" : "Quarter"}</p>
+    <table class="summary-compact-table">
+      <thead><tr><th></th>${headerCells}</tr></thead>
+      <tbody>
+        <tr><th>${escapeHtml(homeName)}</th>${homeCells}</tr>
+        <tr><th>${escapeHtml(awayName)}</th>${awayCells}</tr>
+      </tbody>
+    </table>
+  </div>`;
 }
 
-function formatDate(iso) {
-  try {
-    return new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
-  } catch {
-    return "";
-  }
+// ─── Team stats comparison ────────────────────────────────────────────────────
+
+function renderTeamStats(game) {
+  const homeStats = statsForEvents((game.events || []).filter((e) => e.team === "Hornets"));
+  const awayStats = statsForEvents((game.events || []).filter((e) => e.team === "Opponent"));
+  const homeName = game.teamNames?.Hornets || "Hornets";
+  const awayName = game.teamNames?.Opponent || "Opponent";
+
+  const row = (label, homeVal, awayVal) =>
+    `<tr><td>${homeVal}</td><th>${label}</th><td>${awayVal}</td></tr>`;
+
+  return `<div class="summary-box">
+    <table class="summary-compare-table">
+      <thead>
+        <tr>
+          <th style="color:var(--hornets)">${escapeHtml(homeName)}</th>
+          <th></th>
+          <th style="color:var(--away)">${escapeHtml(awayName)}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${row("FG%", pct(homeStats.fgMade, homeStats.fgAtt), pct(awayStats.fgMade, awayStats.fgAtt))}
+        ${row("3PT%", pct(homeStats.threeMade, homeStats.threeAtt), pct(awayStats.threeMade, awayStats.threeAtt))}
+        ${row("FT%", pct(homeStats.ftMade, homeStats.ftAtt), pct(awayStats.ftMade, awayStats.ftAtt))}
+        ${row("REB", homeStats.rebounds, awayStats.rebounds)}
+        ${row("STL", homeStats.steals, awayStats.steals)}
+      </tbody>
+    </table>
+  </div>`;
 }
+
+// ─── Top performers ───────────────────────────────────────────────────────────
+
+function leadingPerformer(game, team, statKey) {
+  const players = withEventOnlyPlayers(game, team);
+  let best = null, bestVal = 0;
+  for (const n of players) {
+    const s = statsForEvents((game.events || []).filter((e) => e.team === team && e.player === n));
+    if (s[statKey] > bestVal) { bestVal = s[statKey]; best = n; }
+  }
+  if (!best || bestVal === 0) return null;
+  const player = (game.rosters?.[team] || []).find((p) => p.number === Number(best));
+  return { number: best, name: player?.name || "", value: bestVal };
+}
+
+function renderTopPerformers(game) {
+  const homeName = game.teamNames?.Hornets || "Hornets";
+  const awayName = game.teamNames?.Opponent || "Opponent";
+
+  const homeScorer    = leadingPerformer(game, "Hornets",  "points");
+  const awayScorer    = leadingPerformer(game, "Opponent", "points");
+  const homeRebounder = leadingPerformer(game, "Hornets",  "rebounds");
+  const awayRebounder = leadingPerformer(game, "Opponent", "rebounds");
+
+  if (!homeScorer && !awayScorer && !homeRebounder && !awayRebounder) return "";
+
+  const playerStr = (p) => p ? `#${p.number}${p.name ? " " + escapeHtml(p.name) : ""} — ${p.value}` : "—";
+
+  const perfRow = (label, unit, homeP, awayP) => {
+    if (!homeP && !awayP) return "";
+    return `<div class="top-perf-row">
+      <div class="top-perf-label">${label}</div>
+      <div class="top-perf-teams">
+        <div class="top-perf-player">
+          <span class="top-perf-team" style="color:var(--hornets)">${escapeHtml(homeName)}</span>
+          ${playerStr(homeP)} <span class="top-perf-unit">${unit}</span>
+        </div>
+        <div class="top-perf-player">
+          <span class="top-perf-team" style="color:var(--away)">${escapeHtml(awayName)}</span>
+          ${playerStr(awayP)} <span class="top-perf-unit">${unit}</span>
+        </div>
+      </div>
+    </div>`;
+  };
+
+  return `<div class="summary-box">
+    <p class="summary-section-title">Top Performers</p>
+    <div class="top-performers">
+      ${perfRow("Leading Scorer", "pts", homeScorer, awayScorer)}
+      ${perfRow("Leading Rebounder", "reb", homeRebounder, awayRebounder)}
+    </div>
+  </div>`;
+}
+
+// ─── Main render ──────────────────────────────────────────────────────────────
 
 function render(game) {
   applyTeamColors(game);
@@ -159,20 +283,27 @@ function render(game) {
 
   document.title = `${homeName} ${homeScore}–${awayScore} ${awayName} — Fireplug Stats`;
 
+  const homeHref = `/?team=${encodeURIComponent(homeName)}`;
+  const awayHref = `/?team=${encodeURIComponent(awayName)}`;
+
   document.getElementById("summaryRoot").innerHTML = `
     <div class="summary-header">
       <div class="summary-team">
-        <div class="summary-team-name">${escapeHtml(homeName)}</div>
+        <a class="summary-team-name" href="${homeHref}">${escapeHtml(homeName)}</a>
         <div class="summary-score summary-score-home">${homeScore}</div>
       </div>
       <div class="summary-divider">–</div>
       <div class="summary-team">
-        <div class="summary-team-name">${escapeHtml(awayName)}</div>
+        <a class="summary-team-name" href="${awayHref}">${escapeHtml(awayName)}</a>
         <div class="summary-score summary-score-away">${awayScore}</div>
       </div>
     </div>
     ${dateStr ? `<div class="summary-date">${escapeHtml(dateStr)}</div>` : ""}
-    <div>
+    <button class="summary-share-btn" id="shareBtn" type="button">Share Summary</button>
+    ${renderPeriodScores(game)}
+    ${renderTeamStats(game)}
+    ${renderTopPerformers(game)}
+    <div class="summary-box">
       <p class="summary-section-title">Shot Charts</p>
       <div class="summary-courts">
         <div class="summary-court-wrap">
@@ -185,12 +316,27 @@ function render(game) {
         </div>
       </div>
     </div>
-    <div>
+    <div class="summary-box">
       <p class="summary-section-title">Box Score</p>
       ${renderBoxScore(game)}
     </div>
     <div class="summary-wordmark">Fireplug Stats</div>
   `;
+
+  document.getElementById("shareBtn").addEventListener("click", () => {
+    const url = window.location.href;
+    const title = `${homeName} ${homeScore}–${awayScore} ${awayName}`;
+    if (navigator.share) {
+      navigator.share({ title, url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById("shareBtn");
+        const orig = btn.textContent;
+        btn.textContent = "Link copied!";
+        setTimeout(() => { btn.textContent = orig; }, 2000);
+      }).catch(() => {});
+    }
+  });
 }
 
 async function init() {

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#111827">
     <title>Game Summary — Fireplug Stats</title>
-    <link rel="stylesheet" href="styles.css?v=16">
+    <link rel="stylesheet" href="styles.css?v=17">
     <style>
       .summary-shell {
         width: min(100%, 600px);
@@ -102,6 +102,162 @@
         font-weight: 700;
       }
 
+      .summary-team-name {
+        text-decoration: none;
+        display: block;
+      }
+
+      .summary-share-btn {
+        width: 100%;
+        min-height: 52px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--paper);
+        color: var(--ink);
+        font-size: 16px;
+        font-weight: 900;
+        cursor: pointer;
+      }
+
+      .summary-box {
+        display: grid;
+        gap: 10px;
+      }
+
+      /* Compact tables used for period scores and team comparison */
+      .summary-compact-table,
+      .summary-compare-table {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+        background: var(--paper);
+      }
+
+      .summary-compact-table th,
+      .summary-compact-table td,
+      .summary-compare-table th,
+      .summary-compare-table td {
+        padding: 10px 12px;
+        font-size: 14px;
+        border-bottom: 1px solid var(--line);
+        white-space: nowrap;
+      }
+
+      .summary-compact-table tbody tr:last-child th,
+      .summary-compact-table tbody tr:last-child td,
+      .summary-compare-table tbody tr:last-child th,
+      .summary-compare-table tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .summary-compact-table thead th {
+        background: #eee6db;
+        font-size: 12px;
+        font-weight: 900;
+        text-transform: uppercase;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .summary-compact-table thead th:first-child {
+        text-align: left;
+      }
+
+      .summary-compact-table tbody th {
+        font-size: 13px;
+        font-weight: 900;
+        text-align: left;
+      }
+
+      .summary-compact-table tbody td {
+        text-align: center;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .period-total {
+        font-weight: 950 !important;
+        border-left: 1px solid var(--line);
+      }
+
+      /* Team comparison table */
+      .summary-compare-table thead th {
+        font-size: 13px;
+        font-weight: 900;
+        padding: 10px 12px;
+        background: #eee6db;
+        text-align: center;
+      }
+
+      .summary-compare-table thead th:first-child { text-align: left; }
+      .summary-compare-table thead th:last-child  { text-align: right; }
+
+      .summary-compare-table tbody th {
+        text-align: center;
+        font-size: 12px;
+        font-weight: 900;
+        text-transform: uppercase;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+      }
+
+      .summary-compare-table tbody td {
+        font-size: 16px;
+        font-weight: 800;
+        text-align: left;
+      }
+
+      .summary-compare-table tbody td:last-child {
+        text-align: right;
+      }
+
+      /* Top performers */
+      .top-performers {
+        display: grid;
+        gap: 10px;
+      }
+
+      .top-perf-row {
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--paper);
+        display: grid;
+        gap: 8px;
+      }
+
+      .top-perf-label {
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+      }
+
+      .top-perf-teams {
+        display: grid;
+        gap: 4px;
+      }
+
+      .top-perf-player {
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .top-perf-team {
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
+        margin-right: 4px;
+      }
+
+      .top-perf-unit {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
       .summary-wordmark {
         text-align: center;
         color: var(--muted);
@@ -126,6 +282,6 @@
     <main class="summary-shell" id="summaryRoot">
       <p class="summary-error">Loading game summary…</p>
     </main>
-    <script src="summary.js?v=14" type="module"></script>
+    <script src="summary.js?v=17" type="module"></script>
   </body>
 </html>

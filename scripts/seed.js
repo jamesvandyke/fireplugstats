@@ -121,17 +121,20 @@ const SAMPLE_TEAMS = [
 
 // ─── Game event generator ─────────────────────────────────────────────────────
 
+// Coordinates are percentages (0-100), matching how app.js records shot locations:
+// x = (clientX - rect.left) / rect.width * 100. Court SVG viewBox is "0 0 50 47",
+// so pct = (svgCoord / dimension) * 100.
 const ZONES = [
-  { zone: "At Rim",         points: 2, x: 25.0, y: 42.5 },
-  { zone: "Paint",          points: 2, x: 22.5, y: 36.0 },
-  { zone: "Left Midrange",  points: 2, x: 12.5, y: 30.0 },
-  { zone: "Right Midrange", points: 2, x: 37.5, y: 30.0 },
-  { zone: "Midrange",       points: 2, x: 25.5, y: 27.5 },
-  { zone: "Left Wing 3",    points: 3, x:  8.0, y: 22.0 },
-  { zone: "Right Wing 3",   points: 3, x: 41.0, y: 22.0 },
-  { zone: "Top 3",          points: 3, x: 25.0, y:  9.5 },
-  { zone: "Left Corner 3",  points: 3, x:  6.0, y: 44.5 },
-  { zone: "Right Corner 3", points: 3, x: 43.0, y: 44.5 },
+  { zone: "At Rim",         points: 2, x: 50.0, y: 90.4 },
+  { zone: "Paint",          points: 2, x: 45.0, y: 76.6 },
+  { zone: "Left Midrange",  points: 2, x: 25.0, y: 63.8 },
+  { zone: "Right Midrange", points: 2, x: 75.0, y: 63.8 },
+  { zone: "Midrange",       points: 2, x: 51.0, y: 58.5 },
+  { zone: "Left Wing 3",    points: 3, x: 16.0, y: 46.8 },
+  { zone: "Right Wing 3",   points: 3, x: 82.0, y: 46.8 },
+  { zone: "Top 3",          points: 3, x: 50.0, y: 20.2 },
+  { zone: "Left Corner 3",  points: 3, x: 12.0, y: 94.7 },
+  { zone: "Right Corner 3", points: 3, x: 88.0, y: 94.7 },
 ];
 
 // Weighted zone selection: rim and paint more likely than corner 3s
