@@ -1021,6 +1021,21 @@ textarea {
   color: var(--muted);
 }
 
+.setup-history {
+  margin-top: 28px;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+
+.setup-history-title {
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
 @media (max-width: 400px) {
   .setup-team-grid {
     grid-template-columns: 1fr;

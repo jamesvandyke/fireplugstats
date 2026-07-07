@@ -164,6 +164,7 @@ function showSetup() {
   });
   $("#setupPeriodLength").value = clockFromSeconds(state.periodSeconds);
   loadSetupTeams();
+  loadPastGames().then((games) => renderHistory(games, $("#setupPastGamesList")));
 }
 
 function startGame() {
@@ -217,8 +218,7 @@ async function loadPastGames() {
   }
 }
 
-function renderHistory(games) {
-  const list = $("#pastGamesList");
+function renderHistory(games, list = $("#pastGamesList")) {
   if (!list) return;
   if (!games.length) {
     list.innerHTML = '<p style="color:var(--muted);font-size:13px">No saved games yet.</p>';
@@ -1084,7 +1084,7 @@ function wireEvents() {
       $$(".view").forEach((view) => view.classList.toggle("active", view.id === `${tab.dataset.view}View`));
       render();
       if (tab.dataset.view === "roster") {
-        loadPastGames().then(renderHistory);
+        loadPastGames().then((games) => renderHistory(games, $("#pastGamesList")));
       }
     });
   });
