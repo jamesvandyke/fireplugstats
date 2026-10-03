@@ -1,4 +1,5 @@
 import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=18";
+import { applyPickedRosters, sanitizePlayerName, sanitizeRoster } from "./rosters.mjs?v=1";
 
 const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
@@ -21,6 +22,8 @@ let step = "player";
 let clockTimer = null;
 let liveClockTicks = 0;
 let savedGameId = null;
+// Rosters of the saved teams picked on the setup screen, applied at Start Game.
+let pickedRosters = { Hornets: null, Opponent: null };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -148,11 +151,16 @@ async function loadSetupTeams() {
 }
 
 async function applySetupTeam(teamId, side) {
+  const key = side === "home" ? "Hornets" : "Opponent";
+  pickedRosters[key] = null;
   if (!teamId) return;
   try {
     const res = await fetch(`/api/teams/${encodeURIComponent(teamId)}`);
     if (!res.ok) return;
     const team = await res.json();
+    // Ignore a slow response for a team that is no longer selected.
+    if ($(side === "home" ? "#setupHomeTeam" : "#setupAwayTeam").value !== teamId) return;
+    pickedRosters[key] = team.roster || null;
     if (side === "home") {
       $("#setupHomeName").value = team.name || "";
       $("#setupHomeColor").value = sanitizeColor(team.color, DEFAULT_TEAM_COLORS.Hornets);
@@ -177,6 +185,7 @@ function showSetup() {
     input.checked = input.value === state.periodMode;
   });
   $("#setupPeriodLength").value = clockFromSeconds(state.periodSeconds);
+  pickedRosters = { Hornets: null, Opponent: null };
   loadSetupTeams();
   const teamFilter = new URLSearchParams(window.location.search).get("team");
   const titleEl = document.querySelector(".setup-history-title");
@@ -203,6 +212,7 @@ function startGame() {
   state.teamColors.Opponent = awayColor;
   state.periodMode = periodMode;
   state.periodSeconds = periodSeconds;
+  applyPickedRosters(state, pickedRosters);
   if (state.events.length === 0) state.lastTime = clockFromSeconds(periodSeconds);
   state.gameStarted = true;
   persist();
@@ -577,22 +587,6 @@ function withEventOnlyPlayers(team) {
   return [...new Set([...roster, ...eventPlayers])].sort((a, b) => a - b);
 }
 
-function sanitizeRoster(values) {
-  const players = values
-    .map((entry) => {
-      if (typeof entry === "number") return { number: entry, name: "" };
-      const number = Number(entry?.number);
-      return {
-        number,
-        name: sanitizePlayerName(entry?.name || ""),
-      };
-    })
-    .filter((player) => Number.isInteger(player.number) && player.number >= 0 && player.number <= 99);
-  const byNumber = new Map();
-  players.forEach((player) => byNumber.set(player.number, player));
-  return [...byNumber.values()].sort((a, b) => a.number - b.number);
-}
-
 function parseRoster(value) {
   const lines = String(value).split(/\n|,/).map((line) => line.trim()).filter(Boolean);
   const entries = lines.flatMap((line) => {
@@ -647,10 +641,6 @@ function playerLabel(team, number) {
 function sanitizeTeamName(value, fallback) {
   const clean = String(value || "").trim().slice(0, 24);
   return clean || fallback;
-}
-
-function sanitizePlayerName(value) {
-  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 24);
 }
 
 function cloneRoster(roster) {
