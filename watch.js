@@ -1,3 +1,5 @@
+import { formatMinutes, secondsPlayed } from "./lineups.mjs?v=18";
+
 const params = new URLSearchParams(window.location.search);
 const gameId = params.get("game");
 let game = null;
@@ -69,6 +71,7 @@ function actionText(event) {
     if (event.shotType === "freeThrow") return `${event.made ? "made" : "missed"} free throw`;
     return `${event.made ? "made" : "missed"} ${event.points} (${event.location.zone})`;
   }
+  if (event.action === "sub") return `in for #${event.playerOut}`;
   return event.action;
 }
 
@@ -168,17 +171,19 @@ function renderPlays() {
 function renderBox() {
   $("#boxTitle").textContent = "Box Score";
   $("#boxRows").innerHTML = ["Hornets", "Opponent"].map((team) => {
+    const minutes = secondsPlayed(game, team);
     const rows = withEventOnlyPlayers(team).map((number) => {
       const stats = statsForPlayer(team, number);
-      return boxRow(playerLabel(team, number), stats);
+      return boxRow(playerLabel(team, number), stats, "", minutes ? formatMinutes(minutes.get(number) || 0) : "--");
     }).join("");
-    return `<tr class="team-box-row"><th colspan="11">${escapeHtml(teamName(team))}</th></tr>${rows}${boxRow("Team", statsForTeam(team), "total-row")}`;
+    return `<tr class="team-box-row"><th colspan="12">${escapeHtml(teamName(team))}</th></tr>${rows}${boxRow("Team", statsForTeam(team), "total-row")}`;
   }).join("");
 }
 
-function boxRow(label, stats, className = "") {
+function boxRow(label, stats, className = "", minutes = "") {
   return `<tr${className ? ` class="${className}"` : ""}>
         <th>${escapeHtml(label)}</th>
+        <td>${minutes}</td>
         <td>${stats.points}</td>
         <td>${stats.fgMade}-${stats.fgAtt}</td>
         <td>${pct(stats.fgMade, stats.fgAtt)}</td>

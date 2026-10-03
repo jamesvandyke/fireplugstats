@@ -1,3 +1,5 @@
+import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=18";
+
 const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
 const MAX_CLOCK_SECONDS = 20 * 60;
@@ -29,6 +31,8 @@ const stepTitles = {
   location: ["Location", "Tap the court"],
   result: ["Result", ""],
   rebound: ["Rebound", "Choose rebounder or skip"],
+  subIn: ["Sub In", "Who is coming in?"],
+  subOut: ["Sub Out", ""],
 };
 
 function defaultState() {
@@ -58,6 +62,8 @@ function defaultState() {
       gameId: "",
       watchUrl: "",
     },
+    // Lineup at tip-off per team; empty means the first five on the roster.
+    starters: { Hornets: [], Opponent: [] },
     events: [],
     gameStarted: false,
   };
@@ -104,9 +110,17 @@ function migrateState(saved) {
       gameId: String(saved?.live?.gameId || ""),
       watchUrl: String(saved?.live?.watchUrl || ""),
     },
+    starters: {
+      Hornets: sanitizeNumbers(saved?.starters?.Hornets),
+      Opponent: sanitizeNumbers(saved?.starters?.Opponent),
+    },
     events: Array.isArray(saved?.events) ? saved.events : [],
     gameStarted: Boolean(saved?.gameStarted),
   };
+}
+
+function sanitizeNumbers(values) {
+  return Array.isArray(values) ? values.map(Number).filter((number) => Number.isInteger(number)) : [];
 }
 
 function persist() {
@@ -399,15 +413,61 @@ function classifyShot(x, y) {
 }
 
 function renderPlayers() {
-  $("#hornetsPlayers").innerHTML = state.rosters.Hornets.map((player) => playerButton("Hornets", player)).join("");
-  $("#opponentPlayers").innerHTML = state.rosters.Opponent.map((player) => playerButton("Opponent", player)).join("");
-  $("#reboundHornetsPlayers").innerHTML = state.rosters.Hornets.map((player) => playerButton("Hornets", player, "player-btn rebound-player-btn")).join("");
-  $("#reboundOpponentPlayers").innerHTML = state.rosters.Opponent.map((player) => playerButton("Opponent", player, "player-btn rebound-player-btn")).join("");
+  ["Hornets", "Opponent"].forEach((team) => {
+    const lineup = currentLineup(state, team);
+    const onCourt = lineup.map((number) => playerButton(team, playerFor(team, number))).join("");
+    const subButton = bench(state, team).length
+      ? `<button class="player-btn sub-btn" data-team="${team}">Sub</button>`
+      : "";
+    const prefix = team === "Hornets" ? "hornets" : "opponent";
+    $(`#${prefix}Players`).innerHTML = onCourt + subButton;
+    $(`#rebound${team}Players`).innerHTML = lineup
+      .map((number) => playerButton(team, playerFor(team, number), "player-btn rebound-player-btn"))
+      .join("");
+  });
+  renderSubChoices();
+}
+
+function renderSubChoices() {
+  if (!draft.subTeam || (step !== "subIn" && step !== "subOut")) return;
+  const team = draft.subTeam;
+  const numbers = step === "subOut" ? currentLineup(state, team) : bench(state, team);
+  const className = step === "subOut" ? "player-btn sub-out-btn" : "player-btn sub-in-btn";
+  const grid = $(`#${step}Players`);
+  grid.classList.toggle("opponent-grid", team === "Opponent");
+  grid.innerHTML = numbers.map((number) => playerButton(team, playerFor(team, number), className)).join("");
 }
 
 function playerButton(team, player, className = "player-btn") {
   const label = player.name ? `<small>${escapeHtml(player.name)}</small>` : "";
   return `<button class="${className}" data-team="${team}" data-player="${player.number}"><span>${player.number}</span>${label}</button>`;
+}
+
+// Before any game time has run, a sub changes who starts instead of logging a substitution.
+function isBeforeTipOff() {
+  return state.period === 1 && secondsFromClock(state.lastTime) >= state.periodSeconds;
+}
+
+function saveSub(team, playerIn, playerOut) {
+  const event = {
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    period: state.period,
+    periodMode: state.periodMode,
+    time: state.lastTime,
+    team,
+    player: Number(playerIn),
+    action: "sub",
+    playerOut: Number(playerOut),
+  };
+  if (isBeforeTipOff()) {
+    state.starters[team] = applySub(currentLineup(state, team), event);
+  } else {
+    state.events.push(event);
+  }
+  persist();
+  resetDraft();
+  render();
+  publishLiveSoon();
 }
 
 function courtRotationFor(team) {
@@ -443,9 +503,16 @@ function setStep(nextStep) {
   $$(".step").forEach((el) => el.classList.toggle("active", el.id === `${step}Step`));
   const [title, meta] = stepTitles[step];
   $("#stepTitle").textContent = title;
-  $("#stepMeta").textContent = step === "player" ? `${teamName("Hornets")} on top, ${teamName("Opponent")} below` : meta || playerLabel(draft.team, Number(draft.player));
+  $("#stepMeta").textContent = step === "player"
+    ? `${teamName("Hornets")} on top, ${teamName("Opponent")} below`
+    : step === "subIn"
+      ? `${teamName(draft.subTeam)}: ${meta}`
+      : step === "subOut"
+        ? `${playerLabel(draft.subTeam, Number(draft.subIn))} in for who?`
+        : meta || playerLabel(draft.team, Number(draft.player));
   $("#backBtn").disabled = step === "player";
   if (step === "location") applyCourtOrientation($("#shotCourt"), draft.team);
+  if (step === "subIn" || step === "subOut") renderSubChoices();
 }
 
 function resetDraft() {
@@ -478,17 +545,19 @@ function renderScore() {
 function renderBox() {
   $("#boxRows").innerHTML = ["Hornets", "Opponent"].map((team) => {
     const rosterNumbers = withEventOnlyPlayers(team);
+    const minutes = secondsPlayed(publicGameState(), team);
     const rows = rosterNumbers.map((number) => {
       const stats = statsForPlayer(team, number);
-      return boxRow(playerLabel(team, number), stats);
+      return boxRow(playerLabel(team, number), stats, "", minutes ? formatMinutes(minutes.get(number) || 0) : "--");
     }).join("");
-    return `<tr class="team-box-row"><th colspan="11">${escapeHtml(teamName(team))}</th></tr>${rows}${boxRow("Team", statsForTeam(team), "total-row")}`;
+    return `<tr class="team-box-row"><th colspan="12">${escapeHtml(teamName(team))}</th></tr>${rows}${boxRow("Team", statsForTeam(team), "total-row", "")}`;
   }).join("");
 }
 
-function boxRow(label, stats, className = "") {
+function boxRow(label, stats, className = "", minutes = "") {
   return `<tr${className ? ` class="${className}"` : ""}>
         <th>${escapeHtml(label)}</th>
+        <td>${minutes}</td>
         <td>${stats.points}</td>
         <td>${stats.fgMade}-${stats.fgAtt}</td>
         <td>${pct(stats.fgMade, stats.fgAtt)}</td>
@@ -691,6 +760,7 @@ function actionText(event) {
     if (event.shotType === "freeThrow") return `${event.made ? "made" : "missed"} free throw`;
     return `${event.made ? "made" : "missed"} ${event.points} (${event.location.zone})`;
   }
+  if (event.action === "sub") return `in for #${event.playerOut}`;
   return event.action;
 }
 
@@ -792,6 +862,10 @@ function publicGameState() {
     teamNames: state.teamNames,
     teamColors: state.teamColors,
     rosters: state.rosters,
+    starters: {
+      Hornets: startingLineup(state, "Hornets"),
+      Opponent: startingLineup(state, "Opponent"),
+    },
     events: state.events,
   };
 }
@@ -989,6 +1063,26 @@ function wireEvents() {
       return;
     }
 
+    const subButton = event.target.closest(".sub-btn");
+    if (subButton) {
+      draft = { subTeam: subButton.dataset.team };
+      setStep("subIn");
+      return;
+    }
+
+    const subIn = event.target.closest(".sub-in-btn");
+    if (subIn) {
+      draft.subIn = subIn.dataset.player;
+      setStep("subOut");
+      return;
+    }
+
+    const subOut = event.target.closest(".sub-out-btn");
+    if (subOut) {
+      saveSub(draft.subTeam, draft.subIn, subOut.dataset.player);
+      return;
+    }
+
     const player = event.target.closest(".player-btn");
     if (player) {
       draft = { team: player.dataset.team, player: player.dataset.player, time: state.lastTime };
@@ -1074,6 +1168,8 @@ function wireEvents() {
     else if (step === "location") setStep("action");
     else if (step === "result") setStep("location");
     else if (step === "rebound") resetDraft();
+    else if (step === "subIn") resetDraft();
+    else if (step === "subOut") setStep("subIn");
   });
 
   $("#periodMinus").addEventListener("click", () => {

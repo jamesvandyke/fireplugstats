@@ -310,6 +310,21 @@ p {
   color: var(--away-text);
 }
 
+.lineup-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.lineup-grid .player-btn {
+  aspect-ratio: 1 / .7;
+}
+
+.player-grid .sub-btn {
+  background: var(--ink);
+  color: white;
+  font-size: 22px;
+  font-weight: 950;
+}
+
 .player-btn span {
   font-size: 28px;
   font-weight: 950;

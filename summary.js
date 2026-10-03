@@ -1,3 +1,5 @@
+import { formatMinutes, secondsPlayed } from "./lineups.mjs?v=18";
+
 const COURT_SVG = `<svg class="court-lines" viewBox="0 0 50 47" aria-hidden="true">
   <rect x="0.5" y="0.5" width="49" height="46" />
   <line x1="0.5" y1="46.5" x2="49.5" y2="46.5" />
@@ -93,9 +95,10 @@ function formatDate(iso) {
 
 // ─── Box score ────────────────────────────────────────────────────────────────
 
-function boxRow(label, stats, className = "") {
+function boxRow(label, stats, className = "", minutes = "") {
   return `<tr${className ? ` class="${className}"` : ""}>
     <th>${escapeHtml(label)}</th>
+    <td>${minutes}</td>
     <td>${stats.points}</td>
     <td>${stats.fgMade}-${stats.fgAtt}</td>
     <td>${pct(stats.fgMade, stats.fgAtt)}</td>
@@ -113,19 +116,20 @@ function renderBoxScore(game) {
   const rows = ["Hornets", "Opponent"].map((team) => {
     const teamName = game.teamNames?.[team] || team;
     const numbers = withEventOnlyPlayers(game, team);
+    const minutes = secondsPlayed(game, team);
     const playerRows = numbers.map((n) => {
       const stats = statsForEvents((game.events || []).filter((e) => e.team === team && e.player === n));
-      return boxRow(playerLabel(game, team, n), stats);
+      return boxRow(playerLabel(game, team, n), stats, "", minutes ? formatMinutes(minutes.get(n) || 0) : "--");
     }).join("");
     const teamStats = statsForEvents((game.events || []).filter((e) => e.team === team));
-    return `<tr class="team-box-row"><th colspan="11">${escapeHtml(teamName)}</th></tr>${playerRows}${boxRow("Team", teamStats, "total-row")}`;
+    return `<tr class="team-box-row"><th colspan="12">${escapeHtml(teamName)}</th></tr>${playerRows}${boxRow("Team", teamStats, "total-row")}`;
   }).join("");
 
   return `<div class="table-wrap">
     <table>
       <thead>
         <tr>
-          <th>Player</th><th>PTS</th><th>FG</th><th>FG%</th>
+          <th>Player</th><th>MIN</th><th>PTS</th><th>FG</th><th>FG%</th>
           <th>3PT</th><th>3P%</th><th>FT</th><th>FT%</th>
           <th>REB</th><th>STL</th><th>F</th>
         </tr>
