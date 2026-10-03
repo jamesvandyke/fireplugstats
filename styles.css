@@ -51,6 +51,7 @@ button {
   margin: 0 auto;
   padding: max(12px, env(safe-area-inset-top)) 12px max(18px, env(safe-area-inset-bottom));
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto 1fr;
   gap: 10px;
 }
