@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=17">
+    <link rel="stylesheet" href="styles.css?v=18">
   </head>
   <body>
     <div id="setupView" style="display:none">
@@ -98,12 +98,20 @@
           <div class="step active" id="playerStep">
             <section>
               <h2 id="homePlayersLabel">Hornets</h2>
-              <div class="player-grid" id="hornetsPlayers"></div>
+              <div class="player-grid lineup-grid" id="hornetsPlayers"></div>
             </section>
             <section>
               <h2 id="awayPlayersLabel">Opponent</h2>
-              <div class="player-grid opponent-grid" id="opponentPlayers"></div>
+              <div class="player-grid lineup-grid opponent-grid" id="opponentPlayers"></div>
             </section>
+          </div>
+
+          <div class="step" id="subInStep">
+            <div class="player-grid" id="subInPlayers"></div>
+          </div>
+
+          <div class="step" id="subOutStep">
+            <div class="player-grid lineup-grid" id="subOutPlayers"></div>
           </div>
 
           <div class="step" id="actionStep">
@@ -169,6 +177,7 @@
             <thead>
               <tr>
                 <th>Player</th>
+                <th>MIN</th>
                 <th>PTS</th>
                 <th>FG</th>
                 <th>FG%</th>
@@ -346,6 +355,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=17" type="module"></script>
+    <script src="app.js?v=18" type="module"></script>
   </body>
 </html>
