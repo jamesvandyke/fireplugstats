@@ -25,9 +25,9 @@ test("starters default to the first five on the roster", () => {
   assert.deepEqual(bench(game(), "Opponent"), []);
 });
 
-test("a sub puts the new player in the replaced player's slot", () => {
+test("a sub replaces the outgoing player and the lineup stays sorted by number", () => {
   const g = game({ events: [sub(1, "5:00", 6, 3)] });
-  assert.deepEqual(currentLineup(g, "Hornets"), [1, 2, 6, 4, 5]);
+  assert.deepEqual(currentLineup(g, "Hornets"), [1, 2, 4, 5, 6]);
   assert.deepEqual(bench(g, "Hornets"), [3, 7]);
 });
 
@@ -66,4 +66,14 @@ test("games saved without lineups have unknown minutes", () => {
   assert.equal(secondsPlayed(game({ starters: undefined }), "Hornets"), null);
   assert.equal(formatMinutes(null), "--");
   assert.equal(formatMinutes(605), "10:05");
+});
+
+test("the lineup is sorted by number even when starters were picked out of order", () => {
+  const g = game({
+    rosters: { Hornets: roster(13, 17, 22, 25, 31, 44, 58) },
+    starters: { Hornets: [44, 13, 58, 22, 31] },
+    events: [sub(1, "6:00", 17, 58)],
+  });
+  assert.deepEqual(currentLineup(g, "Hornets"), [13, 17, 22, 31, 44]);
+  assert.deepEqual(bench(g, "Hornets"), [25, 58]);
 });

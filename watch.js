@@ -1,4 +1,4 @@
-import { currentLineup, formatMinutes, secondsPlayed, tracksMinutes } from "./lineups.mjs?v=18";
+import { currentLineup, formatMinutes, secondsPlayed, tracksMinutes } from "./lineups.mjs?v=19";
 
 const params = new URLSearchParams(window.location.search);
 const gameId = params.get("game");

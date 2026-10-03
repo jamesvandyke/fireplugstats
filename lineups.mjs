@@ -34,7 +34,7 @@ export function startingLineup(game, team) {
   return lineup.slice(0, COURT_SIZE);
 }
 
-// The incoming player takes the outgoing player's slot so buttons don't jump around.
+// The incoming player takes the outgoing player's slot.
 export function applySub(lineup, event) {
   const slot = lineup.indexOf(event.playerOut);
   if (slot === -1 || lineup.includes(event.player)) return lineup;
@@ -47,7 +47,8 @@ function subEvents(game, team) {
   return (game.events || []).filter((event) => event.team === team && event.action === "sub");
 }
 
-// Players on the court now. Anyone since dropped from the roster is replaced from the bench.
+// Players on the court now, sorted by number. Anyone since dropped from the roster is
+// replaced from the bench.
 export function currentLineup(game, team) {
   const roster = rosterNumbers(game, team);
   const lineup = subEvents(game, team)
@@ -57,7 +58,7 @@ export function currentLineup(game, team) {
     if (lineup.length >= COURT_SIZE) break;
     if (!lineup.includes(number)) lineup.push(number);
   }
-  return lineup;
+  return lineup.sort((a, b) => a - b);
 }
 
 export function bench(game, team) {
