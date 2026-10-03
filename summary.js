@@ -1,4 +1,4 @@
-import { formatMinutes, secondsPlayed } from "./lineups.mjs?v=18";
+import { formatMinutes, secondsPlayed } from "./lineups.mjs?v=19";
 
 const COURT_SVG = `<svg class="court-lines" viewBox="0 0 50 47" aria-hidden="true">
   <rect x="0.5" y="0.5" width="49" height="46" />
