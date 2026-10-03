@@ -6,7 +6,10 @@ const { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } = re
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
 const ROOT = __dirname;
+const LIVE_SAVE_DELAY_MS = 1000;
 const games = new Map();
+const pendingLiveSaves = new Map();
+let liveSaveDelayMs = LIVE_SAVE_DELAY_MS;
 
 const spacesConfigured =
   process.env.DO_SPACES_KEY &&
@@ -93,48 +96,96 @@ async function s3Put(key, payload) {
   await s3.send(command);
 }
 
+async function s3Delete(key) {
+  await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+}
+
+// JSON key/value store backing saved games, teams and live game snapshots.
+let storage = s3 ? { get: s3Get, put: s3Put, delete: s3Delete } : null;
+
 async function getIndex() {
   try {
-    return await s3Get("games/index.json");
+    return await storage.get("games/index.json");
   } catch {
     return [];
   }
 }
 
 async function putIndex(list) {
-  await s3Put("games/index.json", list);
+  await storage.put("games/index.json", list);
 }
 
 async function saveGame(id, payload) {
-  await s3Put(`games/${id}.json`, payload);
+  await storage.put(`games/${id}.json`, payload);
 }
 
 async function getGame(id) {
-  return await s3Get(`games/${id}.json`);
+  return await storage.get(`games/${id}.json`);
 }
 
 async function getTeamIndex() {
   try {
-    return await s3Get("teams/index.json");
+    return await storage.get("teams/index.json");
   } catch {
     return [];
   }
 }
 
 async function putTeamIndex(list) {
-  await s3Put("teams/index.json", list);
+  await storage.put("teams/index.json", list);
 }
 
 async function saveTeam(id, payload) {
-  await s3Put(`teams/${id}.json`, payload);
+  await storage.put(`teams/${id}.json`, payload);
 }
 
 async function getTeam(id) {
-  return await s3Get(`teams/${id}.json`);
+  return await storage.get(`teams/${id}.json`);
 }
 
 async function deleteTeam(id) {
-  await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: `teams/${id}.json` }));
+  await storage.delete(`teams/${id}.json`);
+}
+
+// Live games are served from memory and written through to storage at most
+// once per liveSaveDelayMs, so a restart or redeploy doesn't lose them.
+function scheduleLiveSave(id) {
+  if (!storage || pendingLiveSaves.has(id)) return;
+  pendingLiveSaves.set(id, setTimeout(() => flushLiveSave(id), liveSaveDelayMs));
+}
+
+async function flushLiveSave(id) {
+  clearTimeout(pendingLiveSaves.get(id));
+  pendingLiveSaves.delete(id);
+  const game = games.get(id);
+  if (!game) return;
+  try {
+    await storage.put(`live/${id}.json`, game);
+  } catch (err) {
+    console.error(`Failed to save live game ${id}:`, err.message);
+  }
+}
+
+async function flushLiveSaves() {
+  await Promise.all([...pendingLiveSaves.keys()].map(flushLiveSave));
+}
+
+async function getLiveGame(id) {
+  if (games.has(id)) return games.get(id);
+  if (!storage) return null;
+  try {
+    const game = await storage.get(`live/${id}.json`);
+    if (!games.has(id)) games.set(id, game);
+    return games.get(id);
+  } catch {
+    return null;
+  }
+}
+
+function teamScore(events, team) {
+  return (events || [])
+    .filter((e) => e.team === team && e.action === "shot" && e.made)
+    .reduce((sum, e) => sum + e.points, 0);
 }
 
 function createSavedGameId() {
@@ -177,7 +228,7 @@ async function handleApi(request, response) {
       return;
     }
     if (request.method === "GET") {
-      const game = games.get(gameId);
+      const game = await getLiveGame(gameId);
       if (!game) { sendJson(response, 404, { error: "Game not found" }); return; }
       sendJson(response, 200, game);
       return;
@@ -186,6 +237,7 @@ async function handleApi(request, response) {
       try {
         const body = await readBody(request);
         games.set(gameId, JSON.parse(body));
+        scheduleLiveSave(gameId);
         sendJson(response, 200, { ok: true });
       } catch {
         sendJson(response, 400, { error: "Invalid game data" });
@@ -198,7 +250,7 @@ async function handleApi(request, response) {
 
   // Saved games routes
   if (url.pathname === "/api/saved-games" || url.pathname.startsWith("/api/saved-games/")) {
-    if (!s3) {
+    if (!storage) {
       sendJson(response, 503, { error: "Storage not configured." });
       return;
     }
@@ -210,13 +262,9 @@ async function handleApi(request, response) {
         const game = JSON.parse(body);
         const id = createSavedGameId();
         const savedAt = new Date().toISOString();
-        const homeScore = (game.events || [])
-          .filter((e) => e.team === "Hornets" && e.action === "shot" && e.made)
-          .reduce((sum, e) => sum + e.points, 0);
-        const awayScore = (game.events || [])
-          .filter((e) => e.team === "Opponent" && e.action === "shot" && e.made)
-          .reduce((sum, e) => sum + e.points, 0);
-        const entry = { id, savedAt, teamNames: game.teamNames, finalScore: { Hornets: homeScore, Opponent: awayScore } };
+        // "Hornets" and "Opponent" are the app's home/away slot keys; display names live in teamNames.
+        const finalScore = { Hornets: teamScore(game.events, "Hornets"), Opponent: teamScore(game.events, "Opponent") };
+        const entry = { id, savedAt, teamNames: game.teamNames, finalScore };
         await saveGame(id, { ...game, id, savedAt });
         const index = await getIndex();
         await putIndex([entry, ...index]);
@@ -256,7 +304,7 @@ async function handleApi(request, response) {
 
   // Teams routes
   if (url.pathname === "/api/teams" || url.pathname.startsWith("/api/teams/")) {
-    if (!s3) {
+    if (!storage) {
       sendJson(response, 503, { error: "Storage not configured." });
       return;
     }
@@ -342,15 +390,35 @@ async function handleApi(request, response) {
   sendJson(response, 404, { error: "Not found" });
 }
 
-const server = http.createServer((request, response) => {
-  if (request.url.startsWith("/api/")) {
-    handleApi(request, response);
-    return;
-  }
-  serveFile(request, response);
-});
+// Options exist for tests: `storage` replaces Spaces ({ get, put, delete } on JSON keys,
+// get rejecting for missing keys). Calling it resets live game state.
+function createServer(options = {}) {
+  if ("storage" in options) storage = options.storage;
+  if (options.liveSaveDelayMs !== undefined) liveSaveDelayMs = options.liveSaveDelayMs;
+  games.clear();
+  for (const timer of pendingLiveSaves.values()) clearTimeout(timer);
+  pendingLiveSaves.clear();
+  return http.createServer((request, response) => {
+    if (request.url.startsWith("/api/")) {
+      handleApi(request, response);
+      return;
+    }
+    serveFile(request, response);
+  });
+}
 
-server.listen(PORT, HOST, () => {
-  console.log(`Fireplug Stats live server: http://${HOST}:${PORT}`);
-  if (!spacesConfigured) console.warn("Warning: DO Spaces not configured — saved games unavailable.");
-});
+if (require.main === module) {
+  const server = createServer();
+  server.listen(PORT, HOST, () => {
+    console.log(`Fireplug Stats live server: http://${HOST}:${PORT}`);
+    if (!spacesConfigured) console.warn("Warning: DO Spaces not configured — saved games unavailable.");
+  });
+
+  // App Platform sends SIGTERM before replacing the instance on redeploy.
+  process.on("SIGTERM", async () => {
+    await flushLiveSaves();
+    process.exit(0);
+  });
+}
+
+module.exports = { createServer, flushLiveSaves, teamScore };
