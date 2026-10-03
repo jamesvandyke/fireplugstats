@@ -1,4 +1,4 @@
-import { formatMinutes, secondsPlayed } from "./lineups.mjs?v=18";
+import { currentLineup, formatMinutes, secondsPlayed, tracksMinutes } from "./lineups.mjs?v=18";
 
 const params = new URLSearchParams(window.location.search);
 const gameId = params.get("game");
@@ -170,19 +170,29 @@ function renderPlays() {
 
 function renderBox() {
   $("#boxTitle").textContent = "Box Score";
+  $("#courtKey").hidden = !tracksMinutes(game);
   $("#boxRows").innerHTML = ["Hornets", "Opponent"].map((team) => {
     const minutes = secondsPlayed(game, team);
+    // Older games have no lineup data, so nobody is marked as on the court.
+    const onCourt = tracksMinutes(game) ? currentLineup(game, team) : [];
+    const courtClass = `on-court ${team === "Opponent" ? "away" : "home"}`;
     const rows = withEventOnlyPlayers(team).map((number) => {
       const stats = statsForPlayer(team, number);
-      return boxRow(playerLabel(team, number), stats, "", minutes ? formatMinutes(minutes.get(number) || 0) : "--");
+      return boxRow(
+        playerLabel(team, number),
+        stats,
+        onCourt.includes(number) ? courtClass : "",
+        minutes ? formatMinutes(minutes.get(number) || 0) : "--",
+      );
     }).join("");
     return `<tr class="team-box-row"><th colspan="12">${escapeHtml(teamName(team))}</th></tr>${rows}${boxRow("Team", statsForTeam(team), "total-row")}`;
   }).join("");
 }
 
 function boxRow(label, stats, className = "", minutes = "") {
+  const onCourt = className.includes("on-court");
   return `<tr${className ? ` class="${className}"` : ""}>
-        <th>${escapeHtml(label)}</th>
+        <th>${escapeHtml(label)}${onCourt ? `<span class="visually-hidden"> (on court)</span>` : ""}</th>
         <td>${minutes}</td>
         <td>${stats.points}</td>
         <td>${stats.fgMade}-${stats.fgAtt}</td>

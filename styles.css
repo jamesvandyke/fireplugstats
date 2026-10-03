@@ -607,6 +607,55 @@ thead th {
   font-weight: 950;
 }
 
+/* Players on the court on the live watch page: a team-colored edge and a light tint. */
+.on-court th:first-child {
+  box-shadow: inset 4px 0 0 var(--court-color);
+  font-weight: 900;
+}
+
+.on-court th,
+.on-court td {
+  background: color-mix(in srgb, var(--court-color) 9%, var(--paper));
+}
+
+.on-court.home {
+  --court-color: var(--hornets);
+}
+
+.on-court.away {
+  --court-color: var(--away);
+}
+
+.court-key {
+  margin: -4px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.court-key[hidden] {
+  display: none;
+}
+
+.court-key span {
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(var(--hornets) 50%, var(--away) 50%);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .play-list {
   margin: 0;
   padding: 0;
