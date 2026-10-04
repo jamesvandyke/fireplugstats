@@ -24,6 +24,8 @@ let liveClockTicks = 0;
 let savedGameId = null;
 // Rosters of the saved teams picked on the setup screen, applied at Start Game.
 let pickedRosters = { Hornets: null, Opponent: null };
+// Team lookups still loading on the setup screen; Start Game waits for them.
+const pendingTeamPicks = { home: null, away: null };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -198,7 +200,23 @@ function showSetup() {
   });
 }
 
-function startGame() {
+function pickSetupTeam(teamId, side) {
+  const pick = applySetupTeam(teamId, side);
+  pendingTeamPicks[side] = pick;
+  pick.finally(() => {
+    if (pendingTeamPicks[side] === pick) pendingTeamPicks[side] = null;
+  });
+}
+
+async function startGame() {
+  const button = $("#startGameBtn");
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    await Promise.all(Object.values(pendingTeamPicks));
+  } finally {
+    button.disabled = false;
+  }
   const homeName = sanitizeTeamName($("#setupHomeName").value, "Hornets");
   const awayName = sanitizeTeamName($("#setupAwayName").value, "Opponent");
   const homeColor = sanitizeColor($("#setupHomeColor").value, DEFAULT_TEAM_COLORS.Hornets);
@@ -453,9 +471,10 @@ function playerButton(team, player, className = "player-btn") {
   return `<button class="${className}" data-team="${team}" data-player="${player.number}"><span>${player.number}</span>${label}</button>`;
 }
 
-// Before any game time has run, a sub changes who starts instead of logging a substitution.
+// Before any game time has run or any play is logged, a sub changes who starts
+// instead of logging a substitution.
 function isBeforeTipOff() {
-  return state.period === 1 && secondsFromClock(state.lastTime) >= state.periodSeconds;
+  return state.events.length === 0 && state.period === 1 && secondsFromClock(state.lastTime) >= state.periodSeconds;
 }
 
 function saveSub(team, playerIn, playerOut) {
@@ -693,6 +712,7 @@ function startClockTimer() {
     state.lastTime = clockFromSeconds(next);
     persist();
     renderScore();
+    if ($("#boxView")?.classList.contains("active")) renderBox();
     liveClockTicks += 1;
     if (liveClockTicks % 5 === 0) publishLiveSoon();
   }, 1000);
@@ -1258,8 +1278,8 @@ function wireEvents() {
 }
 
 // Setup form events
-$("#setupHomeTeam").addEventListener("change", (e) => applySetupTeam(e.target.value, "home"));
-$("#setupAwayTeam").addEventListener("change", (e) => applySetupTeam(e.target.value, "away"));
+$("#setupHomeTeam").addEventListener("change", (e) => pickSetupTeam(e.target.value, "home"));
+$("#setupAwayTeam").addEventListener("change", (e) => pickSetupTeam(e.target.value, "away"));
 $("#startGameBtn").addEventListener("click", startGame);
 
 wireEvents();

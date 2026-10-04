@@ -1,4 +1,5 @@
 import { formatMinutes, secondsPlayed } from "./lineups.mjs?v=19";
+import { readableTextColor, textColorFor } from "./colors.mjs?v=1";
 
 const COURT_SVG = `<svg class="court-lines" viewBox="0 0 50 47" aria-hidden="true">
   <rect x="0.5" y="0.5" width="49" height="46" />
@@ -17,14 +18,6 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
   );
-}
-
-function textColorFor(background) {
-  const hex = String(background).replace(/[^0-9a-f]/gi, "").slice(0, 6).padEnd(6, "0");
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#111827" : "#ffffff";
 }
 
 function statsForEvents(events) {
@@ -65,6 +58,8 @@ function applyTeamColors(game) {
   root.style.setProperty("--hornets-text", textColorFor(hornets));
   root.style.setProperty("--away", opponent);
   root.style.setProperty("--away-text", textColorFor(opponent));
+  root.style.setProperty("--hornets-ink", readableTextColor(hornets));
+  root.style.setProperty("--away-ink", readableTextColor(opponent));
 }
 
 function playerLabel(game, team, number) {
@@ -206,9 +201,9 @@ function renderTeamStats(game) {
     <table class="summary-compare-table">
       <thead>
         <tr>
-          <th style="color:var(--hornets)">${escapeHtml(homeName)}</th>
+          <th style="color:var(--hornets-ink)">${escapeHtml(homeName)}</th>
           <th></th>
-          <th style="color:var(--away)">${escapeHtml(awayName)}</th>
+          <th style="color:var(--away-ink)">${escapeHtml(awayName)}</th>
         </tr>
       </thead>
       <tbody>
@@ -249,19 +244,26 @@ function renderTopPerformers(game) {
 
   const playerStr = (p) => p ? `#${p.number}${p.name ? " " + escapeHtml(p.name) : ""} — ${p.value}` : "—";
 
+  const perfLine = (team, p, unit) => {
+    const name = team === "Hornets" ? homeName : awayName;
+    const ink = team === "Hornets" ? "--hornets-ink" : "--away-ink";
+    return `<div class="top-perf-player">
+          <span class="top-perf-team" style="color:var(${ink})">${escapeHtml(name)}</span>
+          ${playerStr(p)} <span class="top-perf-unit">${unit}</span>
+        </div>`;
+  };
+
+  // The game's leader comes first, from either team; the other team's leader sits underneath.
   const perfRow = (label, unit, homeP, awayP) => {
     if (!homeP && !awayP) return "";
+    const awayLeads = (awayP?.value || 0) > (homeP?.value || 0);
+    const lines = awayLeads
+      ? [perfLine("Opponent", awayP, unit), perfLine("Hornets", homeP, unit)]
+      : [perfLine("Hornets", homeP, unit), perfLine("Opponent", awayP, unit)];
     return `<div class="top-perf-row">
       <div class="top-perf-label">${label}</div>
       <div class="top-perf-teams">
-        <div class="top-perf-player">
-          <span class="top-perf-team" style="color:var(--hornets)">${escapeHtml(homeName)}</span>
-          ${playerStr(homeP)} <span class="top-perf-unit">${unit}</span>
-        </div>
-        <div class="top-perf-player">
-          <span class="top-perf-team" style="color:var(--away)">${escapeHtml(awayName)}</span>
-          ${playerStr(awayP)} <span class="top-perf-unit">${unit}</span>
-        </div>
+        ${lines.join("\n        ")}
       </div>
     </div>`;
   };
