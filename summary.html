@@ -51,8 +51,8 @@
         color: var(--ink);
       }
 
-      .summary-score-home { color: var(--hornets); }
-      .summary-score-away { color: var(--away); }
+      .summary-score-home { color: var(--hornets-ink, var(--hornets)); }
+      .summary-score-away { color: var(--away-ink, var(--away)); }
 
       .summary-divider {
         font-size: 22px;
@@ -282,6 +282,6 @@
     <main class="summary-shell" id="summaryRoot">
       <p class="summary-error">Loading game summary…</p>
     </main>
-    <script src="summary.js?v=19" type="module"></script>
+    <script src="summary.js?v=20" type="module"></script>
   </body>
 </html>
