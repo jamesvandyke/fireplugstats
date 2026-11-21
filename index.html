@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=23">
+    <link rel="stylesheet" href="styles.css?v=24">
   </head>
   <body>
     <div id="setupView" style="display:none">
@@ -97,9 +97,6 @@
               <h1 id="stepTitle">Player</h1>
               <p id="stepMeta">Hornets on top, opponent below</p>
             </div>
-            <button class="mic-btn" id="micBtn" type="button" aria-label="Hold to talk" hidden>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-2.07A7 7 0 0 0 19 12h-2Z"/></svg>
-            </button>
             <button class="undo-btn" id="undoBtn" disabled>Undo</button>
           </div>
 
@@ -181,6 +178,12 @@
             </section>
           </div>
 
+        </div>
+        <div class="mic-bar" id="micBar" hidden>
+          <button class="mic-btn" id="micBtn" type="button" aria-label="Hold to talk">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-2.07A7 7 0 0 0 19 12h-2Z"/></svg>
+            <span id="micLabel">Hold to talk</span>
+          </button>
         </div>
       </section>
 
@@ -386,6 +389,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=23" type="module"></script>
+    <script src="app.js?v=24" type="module"></script>
   </body>
 </html>
