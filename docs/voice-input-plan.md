@@ -1,6 +1,8 @@
 # Voice input plan
 
-Status: draft for review. No code yet.
+Status: draft for review, updated 2026-11-21 with James's answers. No code yet.
+
+Target device: iPhone 16, Safari (home screen or tab both fine). Hold-to-talk. Teams are named by jersey color.
 
 ## Goal
 
@@ -14,15 +16,16 @@ Voice is an extra way in, not a replacement. Every voice command ends up calling
 
 ## How it works for the scorekeeper
 
-1. A mic button sits in the scorebar next to the clock. Tap it to start listening; it glows while the mic is on. Tap again to stop.
+1. A mic button sits in the scorebar next to the clock. Hold it while talking and let go when done (hold-to-talk). It glows while the mic is on. One hold can hold several plays ("rebound green 17, foul gold 23").
 2. Each phrase is turned into a command and shown in a banner under the scorebar, such as "Made shot, White #32 (Paige)". If a phrase can't be understood, the banner shows what was heard in red and nothing is logged.
 3. Plays that don't need a location (rebound, foul, steal, timeout, clock) are saved right away. The banner gives a few seconds to tap Undo, and saying "undo" works too.
-4. Shots open the Location step on the half court with the player and result already filled in:
+4. Every field goal needs a tap on the court. Shots open the Location step on the half court with the player and result already filled in, and a label on top of the court says which shot the tap is for, such as "Tap for: White #32, made".
    - "score white 32": tap the court, and points (2 or 3) come from the spot, exactly as today. Saved on tap.
    - "miss black 4": tap the court, then the Rebound step opens as it does now. Saying "rebound green 17" (or tapping) finishes it; "no rebound" skips it.
    - "free throw white 32 made/missed" skips the court entirely.
-   - "score white 32 skip" (or tapping a new Skip Location button) saves the shot with no location. Points then need a word: "score white 32 three" for 3, otherwise 2.
-5. While the court is waiting for a tap, the mic keeps listening, so a fast scorekeeper can say the next play and it is queued behind the shot.
+5. Shots stack. If more shots are said before the court is tapped, they wait in a queue. The label shows the shot the next tap is for plus a count ("2 more waiting"), and each tap places the oldest waiting shot. Plays that don't need a location (rebound, foul, timeout and so on) save immediately and are not held up by the queue, but they keep the game time they were said at, so the play-by-play stays in order.
+   - A rebound said while its missed shot is still waiting for a tap is attached to that miss when the miss is placed.
+   - A waiting shot can be dropped with an X on the label or by saying "cancel".
 
 ## Commands (first version)
 
@@ -36,7 +39,8 @@ Voice is an extra way in, not a replacement. Every voice command ends up calling
 | foul `<team> <number>` | Foul |
 | steal `<team> <number>` | Steal |
 | sub `<team> <in number>` for `<out number>` | Substitution |
-| timeout [`<team>`] | Timeout (new event, see below) |
+| timeout `<team>` | Team timeout (new event, see below) |
+| ref timeout / official timeout | Official's timeout, no team |
 | start clock / stop clock / clock | Start, stop or toggle the clock |
 | undo | Undo the last play |
 
@@ -70,8 +74,9 @@ Speech engines return numbers as digits ("32"), words ("thirty two") or homophon
 Known risks to test early on a real phone in a gym:
 
 - iOS has been unreliable with speech recognition in home-screen (standalone) PWAs. If it fails there, the fallback is using the site in a Safari tab during games.
-- iOS stops recognition after silence or around a minute; the app restarts it automatically while the mic button is on.
-- Gym noise and the crowd yelling numbers. Push-to-talk (hold the mic button) is offered as a setting if always-on picks up too much.
+- Hold-to-talk keeps each recording short, which avoids iOS cutting recognition off after silence and keeps crowd noise out between plays.
+- On iOS, recognition only gets the final words a moment after the button is released, so the banner may lag by about a second.
+- Gym noise and the crowd yelling numbers.
 
 **Fallback if Web Speech isn't good enough:** record short clips and send them to a cloud transcription service from `server.js`. That adds cost, an API key on DigitalOcean and latency, so it's only worth doing if phase 1 testing shows the built-in engine can't keep up.
 
@@ -79,24 +84,24 @@ Known risks to test early on a real phone in a gym:
 
 - `voice.mjs` (new): pure parser, `parseCommand(text, game) -> command | { error }`. Holds the number normalizer, the color-name table, and team/roster matching. No DOM, so it can be tested with `node --test`.
 - `voice-ui` part of `app.js` (or a small `voice-controller.mjs`): owns the `SpeechRecognition` instance, the mic button and banner, and maps each command onto the existing draft/step functions.
-- `app.js`: small refactors so voice and taps share code, e.g. `beginShot(team, player, made)` that fills `draft` and calls `setStep("location")`; a Skip Location button on the court step; a timeout event.
-- New timeout event: `{ action: "timeout", team?: "Hornets" | "Opponent", period, time }` with no player. `actionText` and the play list in `app.js` and `watch.js` need to handle a missing player (right now `playerLabel` assumes one). Box score and summary ignore it. Timeouts also stop the clock.
-- `index.html` / `styles.css`: mic button, banner, Skip Location button. Bump the `styles.css`, `app.js` and `sw.js` cache versions and add `voice.mjs` to the service worker's asset list.
+- `app.js`: small refactors so voice and taps share code, e.g. `beginShot(team, player, made)` that fills `draft` and calls `setStep("location")`; a pending-shot queue with the "Tap for" label on the court; a timeout event.
+- New timeout event: `{ action: "timeout", team: "Hornets" | "Opponent" | null, period, time }` with no player; `team: null` is an official's timeout. Tap users get Timeout and Ref Timeout buttons too. `actionText` and the play list in `app.js` and `watch.js` need to handle a missing player (right now `playerLabel` assumes one). Box score and summary ignore it. Timeouts also stop the clock.
+- `index.html` / `styles.css`: mic button, banner, "Tap for" label and queue count on the court. Bump the `styles.css`, `app.js` and `sw.js` cache versions and add `voice.mjs` to the service worker's asset list.
 - `test/voice.test.mjs`: table-driven tests for every example phrase, number homophones, color matching (including pale and near-identical colors), word order, and rejection of numbers not on the roster.
 
 ## Phases
 
 1. **Parser and tests.** `voice.mjs` and its tests only. A hidden text box on the Track tab (`?voice=text`) lets us type commands to try the flow on any browser.
 2. **Mic and banner.** Web Speech wiring, mic button, banner with undo, no-location commands (rebound, foul, steal, timeout, clock, undo). Test on James's phone at a practice or a game.
-3. **Shots.** Score/miss opening the court, the miss to rebound hand-off, free throws, Skip Location, queued commands while the court is open.
-4. **Polish from real use.** Push-to-talk setting, optional voice names in Manage Teams, extra synonyms from what the engine actually hears.
+3. **Shots.** Score/miss opening the court, the "Tap for" label, stacked shots, the miss to rebound hand-off, free throws.
+4. **Polish from real use.** Optional voice names in Manage Teams, extra synonyms from what the engine actually hears.
 
 Each phase is its own PR off this branch, merged only when James says so.
 
-## Questions for James
+## Decisions (from James, 2026-11-21)
 
-1. Which phone and browser will you use during games, and do you run it from the home screen or a Safari tab?
-2. Always-listening while the mic is on, or hold-to-talk?
-3. Should a timeout belong to a team ("timeout white"), and do you want timeouts shown anywhere besides the play-by-play (e.g. timeouts remaining)?
-4. Are jersey color words the main way you'll name teams, or team names?
-5. For a shot where you don't want to tap the court, is "skip" plus "three" OK, or should shots always require a tap?
+1. Device: iPhone 16 in Safari; home screen or tab are both fine, so whichever works better wins.
+2. Hold-to-talk.
+3. Timeouts belong to a team, plus an official's timeout with no team.
+4. Teams are named by jersey color.
+5. Every field goal requires a tap; shots can stack, and the court shows which shot the tap is for.
