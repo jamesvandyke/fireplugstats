@@ -16,7 +16,7 @@ Voice is an extra way in, not a replacement. Every voice command ends up calling
 
 ## How it works for the scorekeeper
 
-1. A mic button sits in the scorebar next to the clock. Hold it while talking and let go when done (hold-to-talk). It glows while the mic is on. One hold can hold several plays ("rebound green 17, foul gold 23").
+1. A round mic button sits on the Track tab next to Undo (kept off the court so it never covers a shot spot). Hold it while talking and let go when done (hold-to-talk). It glows while the mic is on. One hold can hold several plays ("rebound green 17, foul gold 23").
 2. Each phrase is turned into a command and shown in a banner under the scorebar, such as "Made shot, White #32 (Paige)". If a phrase can't be understood, the banner shows what was heard in red and nothing is logged.
 3. Plays that don't need a location (rebound, foul, steal, timeout, clock) are saved right away. The banner gives a few seconds to tap Undo, and saying "undo" works too.
 4. Every field goal needs a tap on the court. Shots open the Location step on the half court with the player and result already filled in, and a label on top of the court says which shot the tap is for, such as "Tap for: White #32, made".

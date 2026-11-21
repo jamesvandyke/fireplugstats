@@ -66,12 +66,19 @@ function playerLabel(team, number) {
   return `${teamName(team)} #${number}${player?.name ? ` ${player.name}` : ""}`;
 }
 
+// Timeouts have no player, and an official's timeout has no team.
+function whoLabel(event) {
+  if (event.action === "timeout") return event.team ? teamName(event.team) : "Officials";
+  return playerLabel(event.team, event.player);
+}
+
 function actionText(event) {
   if (event.action === "shot") {
     if (event.shotType === "freeThrow") return `${event.made ? "made" : "missed"} free throw`;
     return `${event.made ? "made" : "missed"} ${event.points} (${event.location.zone})`;
   }
   if (event.action === "sub") return `in for #${event.playerOut}`;
+  if (event.action === "timeout") return "timeout";
   return event.action;
 }
 
@@ -88,7 +95,9 @@ function scoreAfter(index) {
 
 function withEventOnlyPlayers(team) {
   const roster = (game.rosters?.[team] || []).map((player) => player.number);
-  const eventPlayers = game.events.filter((event) => event.team === team).map((event) => event.player);
+  const eventPlayers = game.events
+    .filter((event) => event.team === team && Number.isInteger(event.player))
+    .map((event) => event.player);
   return [...new Set([...roster, ...eventPlayers])].sort((a, b) => a - b);
 }
 
@@ -160,7 +169,7 @@ function renderPlays() {
     ? plays.map(({ event, index }) => `
       <li>
         <span class="play-time">${periodLabelFor(event)} ${event.time}</span>
-        <strong>${escapeHtml(playerLabel(event.team, event.player))}</strong>
+        <strong>${escapeHtml(whoLabel(event))}</strong>
         <span>${escapeHtml(actionText(event))}</span>
         <em>${scoreAfter(index)}</em>
       </li>

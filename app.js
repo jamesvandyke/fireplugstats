@@ -1,6 +1,7 @@
 import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=19";
 import { applyPickedRosters, sanitizePlayerName, sanitizeRoster } from "./rosters.mjs?v=1";
 import { describeCommand, parseSegment, splitPlays } from "./voice.mjs?v=2";
+import { createVoiceListener, speechSupported } from "./speech.mjs?v=1";
 
 const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
@@ -603,7 +604,9 @@ function boxRow(label, stats, className = "", minutes = "") {
 
 function withEventOnlyPlayers(team) {
   const roster = (state.rosters[team] || []).map((player) => player.number);
-  const eventPlayers = state.events.filter((event) => event.team === team).map((event) => event.player);
+  const eventPlayers = state.events
+    .filter((event) => event.team === team && Number.isInteger(event.player))
+    .map((event) => event.player);
   return [...new Set([...roster, ...eventPlayers])].sort((a, b) => a - b);
 }
 
@@ -772,7 +775,14 @@ function actionText(event) {
     return `${event.made ? "made" : "missed"} ${event.points} (${event.location.zone})`;
   }
   if (event.action === "sub") return `in for #${event.playerOut}`;
+  if (event.action === "timeout") return "timeout";
   return event.action;
+}
+
+// Timeouts have no player, and an official's timeout has no team.
+function whoLabel(event) {
+  if (event.action === "timeout") return event.team ? teamName(event.team) : "Officials";
+  return playerLabel(event.team, event.player);
 }
 
 function scoreAfter(index) {
@@ -791,7 +801,7 @@ function renderPlays() {
   $("#playList").innerHTML = plays.map(({ event, index }) => `
     <li>
       <span class="play-time">${periodLabelFor(event)} ${event.time}</span>
-      <strong>${playerLabel(event.team, event.player)}</strong>
+      <strong>${escapeHtml(whoLabel(event))}</strong>
       <span>${actionText(event)}</span>
       <em>${scoreAfter(index)}</em>
     </li>
@@ -1066,6 +1076,23 @@ function saveSettings(showStatus = true) {
   return true;
 }
 
+// team is "Hornets", "Opponent", or null for an official's timeout. The clock stops.
+function saveTimeout(team) {
+  state.events.push({
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    period: state.period,
+    periodMode: state.periodMode,
+    time: state.lastTime,
+    team,
+    action: "timeout",
+  });
+  if (state.clockRunning) toggleClock();
+  persist();
+  resetDraft();
+  render();
+  publishLiveSoon();
+}
+
 function undoLastPlay() {
   state.events.pop();
   persist();
@@ -1075,8 +1102,8 @@ function undoLastPlay() {
 }
 
 // Voice commands. Each one runs through the same functions the buttons use.
-// For now commands are typed into a box shown with ?voice=text (hidden again
-// with ?voice=off); the microphone comes next.
+// They come from the hold-to-talk mic, or from a box for typing them that is
+// shown with ?voice=text (hidden again with ?voice=off).
 const VOICE_TEXT_KEY = "fireplug.voice.text";
 
 function setupVoiceText() {
@@ -1099,15 +1126,78 @@ function voiceGame() {
   };
 }
 
+let voiceBannerTimer = null;
+
+function showVoiceBanner(lines, { undoIds = [], listening = false } = {}) {
+  const banner = $("#voiceBanner");
+  clearTimeout(voiceBannerTimer);
+  banner.classList.toggle("listening", listening);
+  banner.innerHTML = lines
+    .map((line) => `<p class="${line.ok ? "" : "voice-error"}">${escapeHtml(line.text)}</p>`)
+    .join("") + (undoIds.length ? `<button class="voice-undo" type="button">Undo</button>` : "");
+  banner.hidden = false;
+  banner.querySelector(".voice-undo")?.addEventListener("click", () => undoVoicePlays(undoIds));
+  // Clear a fully understood phrase after a while; problems stay until the next one.
+  if (!listening && lines.every((line) => line.ok)) {
+    voiceBannerTimer = setTimeout(() => { banner.hidden = true; }, 8000);
+  }
+}
+
+// Takes back the plays one phrase logged, as long as nothing was logged after them.
+function undoVoicePlays(ids) {
+  const tail = state.events.slice(-ids.length).map((event) => event.id);
+  if (tail.join() !== ids.join()) {
+    showVoiceBanner([{ ok: false, text: "Other plays came after those. Use the Undo button above." }]);
+    return;
+  }
+  state.events.splice(-ids.length);
+  persist();
+  resetDraft();
+  render();
+  publishLiveSoon();
+  showVoiceBanner([{ ok: true, text: ids.length === 1 ? "Undid 1 play." : `Undid ${ids.length} plays.` }]);
+}
+
 function runVoiceText(text) {
+  const before = new Set(state.events.map((event) => event.id));
   // Each play is resolved against the game as the plays before it left it.
   const results = splitPlays(text, voiceGame()).map((play) => runVoiceCommand(parseSegment(play, voiceGame())));
-  if (!results.length) results.push({ ok: false, text: "Didn't hear anything." });
-  const banner = $("#voiceBanner");
-  banner.innerHTML = results
-    .map((result) => `<p class="${result.ok ? "" : "voice-error"}">${escapeHtml(result.text)}</p>`)
-    .join("");
-  banner.hidden = false;
+  if (!results.length) results.push({ ok: false, text: `Heard "${text}" but no play.` });
+  const added = state.events.filter((event) => !before.has(event.id)).map((event) => event.id);
+  const undoable = results.some((result) => result.isUndo) ? [] : added;
+  showVoiceBanner(results, { undoIds: undoable });
+}
+
+function voiceErrorText(code) {
+  if (code === "not-allowed" || code === "service-not-allowed") {
+    return "Speech is blocked. On iPhone, allow the microphone for this site in Safari, and turn on Siri & Dictation.";
+  }
+  if (code === "no-speech") return "Didn't hear anything. Hold the mic while you talk.";
+  if (code === "network") return "Speech needs an internet connection.";
+  if (code === "audio-capture") return "Couldn't use the microphone.";
+  return `Speech stopped (${code}).`;
+}
+
+function setupMic() {
+  const button = $("#micBtn");
+  if (!speechSupported()) return;
+  button.hidden = false;
+  const listener = createVoiceListener({
+    onState: (on) => button.classList.toggle("listening", on),
+    onInterim: (text) => showVoiceBanner([{ ok: true, text: `"${text}"` }], { listening: true }),
+    onText: runVoiceText,
+    onError: (code) => showVoiceBanner([{ ok: false, text: voiceErrorText(code) }]),
+  });
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    button.setPointerCapture?.(event.pointerId);
+    showVoiceBanner([{ ok: true, text: "Listening…" }], { listening: true });
+    listener.start();
+  });
+  const release = () => listener.stop();
+  button.addEventListener("pointerup", release);
+  button.addEventListener("pointercancel", release);
+  button.addEventListener("contextmenu", (event) => event.preventDefault());
 }
 
 function runVoiceCommand(command) {
@@ -1152,7 +1242,8 @@ function runVoiceCommand(command) {
       saveSub(team, command.playerIn, command.playerOut);
       break;
     case "timeout":
-      return fail("timeouts aren't recorded yet. They're coming in the next update.");
+      saveTimeout(command.team);
+      break;
     case "clock":
       if (command.run === "toggle" || command.run !== state.clockRunning) toggleClock();
       publishLiveSoon();
@@ -1160,7 +1251,7 @@ function runVoiceCommand(command) {
     case "undo":
       if (!state.events.length) return fail("nothing to undo.");
       undoLastPlay();
-      break;
+      return { ok: true, text: label, isUndo: true };
     case "cancel":
       resetDraft();
       render();
@@ -1275,6 +1366,10 @@ function wireEvents() {
   });
 
   $("#undoBtn").addEventListener("click", undoLastPlay);
+
+  $$(".timeout-btn").forEach((button) => {
+    button.addEventListener("click", () => saveTimeout(button.dataset.timeout || null));
+  });
 
   $("#voiceTextForm").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1395,6 +1490,7 @@ $("#startGameBtn").addEventListener("click", startGame);
 
 wireEvents();
 setupVoiceText();
+setupMic();
 resetDraft();
 registerServiceWorker();
 

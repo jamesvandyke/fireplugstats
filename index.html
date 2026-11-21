@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=21">
+    <link rel="stylesheet" href="styles.css?v=22">
   </head>
   <body>
     <div id="setupView" style="display:none">
@@ -97,6 +97,9 @@
               <h1 id="stepTitle">Player</h1>
               <p id="stepMeta">Hornets on top, opponent below</p>
             </div>
+            <button class="mic-btn" id="micBtn" type="button" aria-label="Hold to talk" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-2.07A7 7 0 0 0 19 12h-2Z"/></svg>
+            </button>
             <button class="undo-btn" id="undoBtn" disabled>Undo</button>
           </div>
 
@@ -109,6 +112,11 @@
               <h2 id="awayPlayersLabel">Opponent</h2>
               <div class="player-grid lineup-grid opponent-grid" id="opponentPlayers"></div>
             </section>
+            <div class="timeout-row">
+              <button class="timeout-btn home" type="button" data-timeout="Hornets" id="homeTimeoutBtn">Timeout</button>
+              <button class="timeout-btn" type="button" data-timeout="" id="refTimeoutBtn">Ref timeout</button>
+              <button class="timeout-btn away" type="button" data-timeout="Opponent" id="awayTimeoutBtn">Timeout</button>
+            </div>
           </div>
 
           <div class="step" id="subInStep">
@@ -360,6 +368,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=21" type="module"></script>
+    <script src="app.js?v=22" type="module"></script>
   </body>
 </html>
