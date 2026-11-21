@@ -1,7 +1,7 @@
 import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=19";
 import { applyPickedRosters, sanitizePlayerName, sanitizeRoster } from "./rosters.mjs?v=1";
 import { describeCommand, parseSegment, splitPlays } from "./voice.mjs?v=3";
-import { createVoiceListener, speechSupported } from "./speech.mjs?v=3";
+import { createVoiceListener, speechSupported } from "./speech.mjs?v=4";
 
 const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
@@ -1321,6 +1321,11 @@ function setupMic() {
     button.setPointerCapture?.(event.pointerId);
     showVoiceBanner([{ ok: true, text: "Listening…" }], { listening: true });
     listener.start();
+  });
+  // The mic stays on between presses (Safari only hears the first session on a
+  // page otherwise), so turn it off when the app is in the background.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) listener.shutdown();
   });
   const release = (event) => {
     logVoiceDebug(`release (${event.type})`);
