@@ -1,7 +1,7 @@
 import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=19";
 import { applyPickedRosters, sanitizePlayerName, sanitizeRoster } from "./rosters.mjs?v=1";
 import { describeCommand, parseSegment, splitPlays } from "./voice.mjs?v=3";
-import { createVoiceListener, speechSupported } from "./speech.mjs?v=2";
+import { createVoiceListener, speechSupported } from "./speech.mjs?v=4";
 
 const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
@@ -1195,12 +1195,33 @@ function undoLastPlay() {
 // They come from the hold-to-talk mic, or from a box for typing them that is
 // shown with ?voice=text (hidden again with ?voice=off).
 const VOICE_TEXT_KEY = "fireplug.voice.text";
+// ?voice=debug shows a log of what the speech engine reports (cleared with ?voice=off).
+const VOICE_DEBUG_KEY = "fireplug.voice.debug";
+let voiceDebug = false;
+const voiceDebugLines = [];
+
+function logVoiceDebug(message) {
+  if (!voiceDebug) return;
+  const now = new Date();
+  const stamp = `${now.toLocaleTimeString([], { hour12: false })}.${String(now.getMilliseconds()).padStart(3, "0")}`;
+  voiceDebugLines.push(`${stamp} ${message}`);
+  voiceDebugLines.splice(0, Math.max(0, voiceDebugLines.length - 30));
+  const box = $("#voiceDebug");
+  box.hidden = false;
+  box.textContent = voiceDebugLines.join("\n");
+  box.scrollTop = box.scrollHeight;
+}
 
 function setupVoiceText() {
   try {
     const mode = new URLSearchParams(location.search).get("voice");
     if (mode === "text") localStorage.setItem(VOICE_TEXT_KEY, "1");
-    if (mode === "off") localStorage.removeItem(VOICE_TEXT_KEY);
+    if (mode === "debug") localStorage.setItem(VOICE_DEBUG_KEY, "1");
+    if (mode === "off") {
+      localStorage.removeItem(VOICE_TEXT_KEY);
+      localStorage.removeItem(VOICE_DEBUG_KEY);
+    }
+    voiceDebug = localStorage.getItem(VOICE_DEBUG_KEY) === "1";
     $("#voiceTextForm").hidden = localStorage.getItem(VOICE_TEXT_KEY) !== "1";
   } catch {
     $("#voiceTextForm").hidden = true;
@@ -1286,16 +1307,30 @@ function setupMic() {
       $("#micLabel").textContent = on ? "Listening… let go when done" : "Hold to talk";
     },
     onInterim: (text) => showVoiceBanner([{ ok: true, text: `"${text}"` }], { listening: true }),
-    onText: runVoiceText,
+    onText: (text) => {
+      logVoiceDebug(`text "${text}"`);
+      runVoiceText(text);
+    },
     onError: (code) => showVoiceBanner([{ ok: false, text: voiceErrorText(code) }]),
+    onDebug: logVoiceDebug,
   });
+  if (voiceDebug) logVoiceDebug(`ready: ${navigator.userAgent}`);
   button.addEventListener("pointerdown", (event) => {
+    logVoiceDebug(`press (${event.pointerType})`);
     event.preventDefault();
     button.setPointerCapture?.(event.pointerId);
     showVoiceBanner([{ ok: true, text: "Listening…" }], { listening: true });
     listener.start();
   });
-  const release = () => listener.stop();
+  // The mic stays on between presses (Safari only hears the first session on a
+  // page otherwise), so turn it off when the app is in the background.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) listener.shutdown();
+  });
+  const release = (event) => {
+    logVoiceDebug(`release (${event.type})`);
+    listener.stop();
+  };
   button.addEventListener("pointerup", release);
   button.addEventListener("pointercancel", release);
   button.addEventListener("contextmenu", (event) => event.preventDefault());

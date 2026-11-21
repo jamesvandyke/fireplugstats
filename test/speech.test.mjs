@@ -1,26 +1,49 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import { createVoiceListener, speechSupported } from "../speech.mjs";
+import { createVoiceListener, speechSupported, TAIL_MS } from "../speech.mjs";
 
 // A stand-in for Safari's webkitSpeechRecognition that the test drives by hand.
+// Like Safari's, its results are cumulative for the whole session.
 class FakeRecognition {
   static instances = [];
   constructor() {
     FakeRecognition.instances.push(this);
-    this.started = false;
+    this.starts = 0;
+    this.running = false;
+    this.transcripts = [];
   }
-  start() { this.started = true; }
+  start() {
+    if (this.running) {
+      const error = new Error("already started");
+      error.name = "InvalidStateError";
+      throw error;
+    }
+    this.running = true;
+    this.starts += 1;
+    this.transcripts = [];
+  }
   stop() { this.stopped = true; }
-  abort() { this.aborted = true; }
-  say(...phrases) {
-    this.onresult({ results: phrases.map((transcript) => [{ transcript }]) });
+  abort() { this.aborted = true; this.end(); }
+  hear(text) {
+    this.transcripts.push(text);
+    this.onresult({ results: this.transcripts.map((transcript) => [{ transcript }]) });
   }
-  end() { this.onend(); }
+  // Revises the last result, as interim results do.
+  revise(text) {
+    this.transcripts[this.transcripts.length - 1] = text;
+    this.onresult({ results: this.transcripts.map((transcript) => [{ transcript }]) });
+  }
+  end() {
+    this.running = false;
+    this.onend();
+  }
 }
 
 function setup() {
   FakeRecognition.instances = [];
   globalThis.webkitSpeechRecognition = FakeRecognition;
+  mock.timers.reset();
+  mock.timers.enable({ apis: ["setTimeout"] });
   const log = { texts: [], errors: [], states: [], interim: [] };
   const listener = createVoiceListener({
     onText: (text) => log.texts.push(text),
@@ -28,8 +51,12 @@ function setup() {
     onError: (code) => log.errors.push(code),
     onState: (on) => log.states.push(on),
   });
-  return { listener, log, current: () => FakeRecognition.instances.at(-1) };
+  const engine = () => FakeRecognition.instances[0];
+  const release = () => { listener.stop(); mock.timers.tick(TAIL_MS); };
+  return { listener, log, engine, release };
 }
+
+test.afterEach(() => mock.timers.reset());
 
 test("support follows the browser", () => {
   delete globalThis.webkitSpeechRecognition;
@@ -38,104 +65,107 @@ test("support follows the browser", () => {
   assert.equal(speechSupported(), true);
 });
 
-test("everything said while holding is handed over on release", () => {
-  const { listener, log, current } = setup();
+test("one engine serves every press, and only words said while held count", () => {
+  const { listener, log, engine, release } = setup();
   listener.start();
-  assert.equal(current().continuous, true);
-  current().say("score white", " 32");
-  current().say("score white", " 32", " rebound black 4");
+  engine().hear("start clock");
+  release();
+  engine().hear("crowd noise number twelve");
+  listener.start();
+  engine().hear("foul gold 23");
+  release();
+  listener.start();
+  engine().hear("steal white 5");
+  release();
+  assert.deepEqual(log.texts, ["start clock", "foul gold 23", "steal white 5"]);
+  assert.equal(FakeRecognition.instances.length, 1);
+  assert.equal(engine().starts, 1);
+  assert.equal(engine().stopped, undefined);
+  assert.deepEqual(log.errors, []);
+});
+
+test("words finalized just after release still count", () => {
+  const { listener, log, engine } = setup();
+  listener.start();
+  engine().hear("score white");
   listener.stop();
-  assert.equal(current().stopped, true);
-  current().end();
-  assert.deepEqual(log.texts, ["score white 32 rebound black 4"]);
-  assert.deepEqual(log.interim, ["score white 32", "score white 32 rebound black 4"]);
+  engine().revise("score white 32");
+  mock.timers.tick(TAIL_MS);
+  assert.deepEqual(log.texts, ["score white 32"]);
   assert.deepEqual(log.states, [true, false]);
 });
 
-test("a session Safari ends on its own restarts while still held", () => {
-  const { listener, log, current } = setup();
+test("a press during the last one's tail finishes it first", () => {
+  const { listener, log, engine } = setup();
   listener.start();
-  current().say("foul gold 23");
-  current().end();
-  assert.equal(FakeRecognition.instances.length, 2);
-  assert.deepEqual(log.texts, ["foul gold 23"]);
-  current().say("steal white 5");
+  engine().hear("miss black 4");
   listener.stop();
-  current().end();
-  assert.deepEqual(log.texts, ["foul gold 23", "steal white 5"]);
-  assert.deepEqual(log.states, [true, true, false]);
+  listener.start();
+  engine().hear("rebound white 17");
+  listener.stop();
+  mock.timers.tick(TAIL_MS);
+  assert.deepEqual(log.texts, ["miss black 4", "rebound white 17"]);
+});
+
+test("an engine that stops on its own restarts on the next press", () => {
+  const { listener, log, engine, release } = setup();
+  listener.start();
+  engine().hear("start clock");
+  release();
+  engine().end();
+  listener.start();
+  assert.equal(engine().starts, 2);
+  engine().hear("timeout white");
+  release();
+  assert.deepEqual(log.texts, ["start clock", "timeout white"]);
+});
+
+test("an engine that stops while held restarts and keeps the words", () => {
+  const { listener, log, engine, release } = setup();
+  listener.start();
+  engine().hear("foul gold 23");
+  engine().end();
+  assert.equal(engine().starts, 2);
+  engine().hear("steal white 5");
+  release();
+  assert.deepEqual(log.texts, ["foul gold 23 steal white 5"]);
 });
 
 test("silence and blocked permission are reported", () => {
   const quiet = setup();
   quiet.listener.start();
-  quiet.listener.stop();
-  quiet.current().end();
+  quiet.release();
   assert.deepEqual(quiet.log.errors, ["no-speech"]);
 
   const blocked = setup();
   blocked.listener.start();
-  blocked.current().onerror({ error: "not-allowed" });
-  blocked.current().end();
+  blocked.engine().onerror({ error: "not-allowed" });
   assert.deepEqual(blocked.log.errors, ["not-allowed"]);
-  assert.equal(FakeRecognition.instances.length, 1);
-});
-
-test("a release Safari never ends is finished anyway, and the next press works", () => {
-  mock.timers.enable({ apis: ["setTimeout"] });
-  try {
-    const { listener, log, current } = setup();
-    listener.start();
-    current().say("start clock");
-    listener.stop();
-    // No end event arrives.
-    mock.timers.tick(1200);
-    assert.deepEqual(log.texts, ["start clock"]);
-    assert.equal(FakeRecognition.instances[0].aborted, true);
-    listener.start();
-    assert.equal(FakeRecognition.instances.length, 2);
-    current().say("foul gold 23");
-    listener.stop();
-    current().end();
-    assert.deepEqual(log.texts, ["start clock", "foul gold 23"]);
-    // The late timer for the second press does nothing more.
-    mock.timers.tick(1200);
-    assert.deepEqual(log.texts, ["start clock", "foul gold 23"]);
-  } finally {
-    mock.timers.reset();
-  }
-});
-
-test("pressing again before the last session ends starts fresh without losing words", () => {
-  mock.timers.enable({ apis: ["setTimeout"] });
-  try {
-    const { listener, log, current } = setup();
-    listener.start();
-    current().say("score white 32");
-    listener.stop();
-    listener.start();
-    assert.deepEqual(log.texts, ["score white 32"]);
-    assert.equal(FakeRecognition.instances.length, 2);
-    // The old session's late end event is ignored.
-    FakeRecognition.instances[0].end();
-    current().say("steal white 5");
-    listener.stop();
-    current().end();
-    assert.deepEqual(log.texts, ["score white 32", "steal white 5"]);
-    assert.deepEqual(log.errors, []);
-  } finally {
-    mock.timers.reset();
-  }
 });
 
 test("a recognizer that refuses to start is reported", () => {
   const { listener, log } = setup();
+  const original = FakeRecognition.prototype.start;
   FakeRecognition.prototype.start = function () { throw new Error("busy"); };
   try {
     listener.start();
     assert.deepEqual(log.errors, ["start-failed"]);
-    assert.deepEqual(log.states, [false]);
+    assert.deepEqual(log.states, [true, false]);
   } finally {
-    FakeRecognition.prototype.start = function () { this.started = true; };
+    FakeRecognition.prototype.start = original;
   }
+});
+
+test("shutdown turns the mic off until the next press", () => {
+  const { listener, log, engine, release } = setup();
+  listener.start();
+  engine().hear("start clock");
+  release();
+  listener.shutdown();
+  assert.equal(engine().aborted, true);
+  listener.start();
+  assert.equal(engine().starts, 2);
+  engine().hear("stop clock");
+  release();
+  assert.deepEqual(log.texts, ["start clock", "stop clock"]);
 });
