@@ -1353,3 +1353,21 @@ body.has-mic #trackView {
 body.has-mic #shotCourt {
   scroll-margin-bottom: calc(100px + env(safe-area-inset-bottom));
 }
+
+.voice-debug {
+  max-height: 220px;
+  margin: 0 0 8px;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #111827;
+  color: #d1fae5;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.voice-debug[hidden] {
+  display: none;
+}
+

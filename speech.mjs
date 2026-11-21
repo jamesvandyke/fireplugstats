@@ -17,7 +17,9 @@ export function speechSupported() {
   return Boolean(Recognition());
 }
 
-export function createVoiceListener({ onText, onInterim, onError, onState }) {
+export function createVoiceListener({ onText, onInterim, onError, onState, onDebug }) {
+  let count = 0;
+  const log = (message) => onDebug?.(message);
   let session = null;
   let holding = false;
 
@@ -36,7 +38,11 @@ export function createVoiceListener({ onText, onInterim, onError, onState }) {
   function begin() {
     const SpeechRecognition = Recognition();
     const recognition = new SpeechRecognition();
-    const current = { recognition, heard: "", failed: false, done: false, timer: null };
+    const current = { recognition, heard: "", failed: false, done: false, timer: null, n: ++count };
+    const tag = (name) => () => log(`#${current.n} ${name}`);
+    for (const name of ["start", "audiostart", "soundstart", "speechstart", "speechend", "soundend", "audioend", "nomatch"]) {
+      recognition.addEventListener?.(name, tag(name));
+    }
     session = current;
     recognition.lang = "en-US";
     recognition.continuous = true;
@@ -45,17 +51,25 @@ export function createVoiceListener({ onText, onInterim, onError, onState }) {
     // Each result event carries everything this session has heard so far.
     recognition.onresult = (event) => {
       current.heard = [...event.results].map((result) => result[0].transcript).join(" ").replace(/\s+/g, " ").trim();
+      const last = event.results[event.results.length - 1];
+      log(`#${current.n} result ${event.results.length} ${last?.isFinal ? "final" : "interim"} "${current.heard}"`);
       if (!current.done) onInterim?.(current.heard);
     };
     recognition.onerror = (event) => {
+      log(`#${current.n} error ${event.error}`);
       if (event.error === "aborted" || current.done) return;
       current.failed = true;
       onError?.(event.error);
     };
-    recognition.onend = () => finish(current);
+    recognition.onend = () => {
+      log(`#${current.n} end${current.done ? " (late)" : ""}`);
+      finish(current);
+    };
     try {
       recognition.start();
+      log(`#${current.n} start() called`);
     } catch (error) {
+      log(`#${current.n} start() threw ${error?.name || error}`);
       current.failed = true;
       onError?.(error?.name === "NotAllowedError" ? "not-allowed" : "start-failed");
       finish(current, { quiet: true });
@@ -81,7 +95,9 @@ export function createVoiceListener({ onText, onInterim, onError, onState }) {
       const current = session;
       if (!current) return;
       try { current.recognition.stop(); } catch { /* already stopped */ }
+      log(`#${current.n} stop() called`);
       current.timer = setTimeout(() => {
+        log(`#${current.n} no end after release, finishing by hand`);
         try { current.recognition.abort(); } catch { /* already stopped */ }
         finish(current);
       }, FINISH_AFTER_MS);
