@@ -70,7 +70,9 @@ function playerLabel(game, team, number) {
 
 function withEventOnlyPlayers(game, team) {
   const roster = (game.rosters?.[team] || []).map((p) => p.number);
-  const eventPlayers = (game.events || []).filter((e) => e.team === team).map((e) => e.player);
+  const eventPlayers = (game.events || [])
+    .filter((e) => e.team === team && Number.isInteger(e.player))
+    .map((e) => e.player);
   return [...new Set([...roster, ...eventPlayers])].sort((a, b) => a - b);
 }
 

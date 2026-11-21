@@ -16,3 +16,8 @@ npm test           # API tests, using in-memory storage instead of Spaces
 ```
 
 Saved games, teams and snapshots of live games (`live/<id>.json`, so live links survive restarts and redeploys) are stored in DigitalOcean Spaces. Set the `DO_SPACES_*` variables from `.env.example` to enable them; without them the saved-game and team API routes return 503 and live games are kept in memory only. The server reads only real environment variables, so either export them or copy `.env.example` to `.env` and start with `node --env-file=.env server.js` (Node 20.6+). `node scripts/seed.js` reads `.env` itself and loads sample teams and games into Spaces (`--clear` removes them).
+
+## Voice input
+
+On the Track tab, hold the mic button and say plays such as "score white 32", "miss black 4 rebound white 17", "foul gold 23", "timeout white", "ref timeout" or "start clock". Teams are named by jersey color (matched to the closest team color), team name, home/away, or extra words set in Settings. Called shots wait in line for a tap on the court. The parser lives in `voice.mjs` and the hold-to-talk wrapper in `speech.mjs`; add `?voice=text` to the URL for a box to type commands instead (`?voice=off` hides it). See `docs/voice-input-plan.md`.
+
