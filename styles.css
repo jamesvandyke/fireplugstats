@@ -902,6 +902,12 @@ textarea {
   }
 }
 
+.settings-hint {
+  margin: -4px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 #rosterStatus {
   min-height: 20px;
   color: var(--hornets);
@@ -1225,14 +1231,16 @@ textarea {
 }
 
 .voice-banner {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 4px 12px;
+  column-gap: 12px;
+  font-size: 13px;
 }
 
 .voice-banner p {
-  flex: 1 1 100%;
+  grid-column: 1;
+  margin: 1px 0;
 }
 
 .voice-banner.listening {
@@ -1241,6 +1249,8 @@ textarea {
 }
 
 .voice-undo {
+  grid-column: 2;
+  grid-row: 1 / span 20;
   min-height: 36px;
   padding: 0 14px;
   border: 0;
@@ -1248,6 +1258,47 @@ textarea {
   background: #dc2626;
   color: white;
   font-weight: 850;
+}
+
+.shot-queue {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: white;
+}
+
+.shot-queue[hidden] {
+  display: none;
+}
+
+.shot-queue > div {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.shot-queue strong {
+  font-size: 17px;
+}
+
+.shot-queue span {
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.shot-queue-drop {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .15);
+  color: white;
+  font-size: 18px;
 }
 
 .timeout-row {

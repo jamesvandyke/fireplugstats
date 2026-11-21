@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=22">
+    <link rel="stylesheet" href="styles.css?v=23">
   </head>
   <body>
     <div id="setupView" style="display:none">
@@ -137,6 +137,13 @@
           </div>
 
           <div class="step" id="locationStep">
+            <div class="shot-queue" id="shotQueue" hidden>
+              <div>
+                <strong id="shotQueueText"></strong>
+                <span id="shotQueueMore"></span>
+              </div>
+              <button class="shot-queue-drop" id="dropShotBtn" type="button" aria-label="Drop this shot">✕</button>
+            </div>
             <button class="free-throw-btn" id="freeThrowBtn">Free Throw</button>
             <button class="court" id="shotCourt" aria-label="Shot location">
               <svg class="court-lines" viewBox="0 0 50 47" aria-hidden="true">
@@ -274,6 +281,17 @@
               <input id="awayTeamColor" type="color">
             </label>
           </div>
+          <div class="setup-grid">
+            <label>
+              <span>Home voice words</span>
+              <input id="homeVoiceWords" maxlength="60" placeholder="e.g. silver" autocomplete="off" autocapitalize="off">
+            </label>
+            <label>
+              <span>Away voice words</span>
+              <input id="awayVoiceWords" maxlength="60" placeholder="e.g. yellow" autocomplete="off" autocapitalize="off">
+            </label>
+          </div>
+          <p class="settings-hint">Optional extra words for each team when talking, separated by commas. Jersey colors, team names, and home/away already work.</p>
           <label>
             <span id="homeRosterLabel">Hornets roster</span>
             <textarea id="hornetsRoster" autocomplete="off" autocapitalize="words" spellcheck="false"></textarea>
@@ -368,6 +386,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=22" type="module"></script>
+    <script src="app.js?v=23" type="module"></script>
   </body>
 </html>

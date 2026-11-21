@@ -162,6 +162,24 @@ test("plays can be resolved one at a time against the lineup they'll meet", () =
   assert.deepEqual(parseSegment(foul, after), { type: "foul", team: "Hornets", player: 12, heard: "foul 12" });
 });
 
+test("extra team words from settings", () => {
+  const g = game({ voiceWords: { Hornets: "silver, home team", Opponent: "yellow jackets" } });
+  assert.deepEqual(parse("score silver 32", g), [{ type: "shot", team: "Hornets", player: 32, made: true }]);
+  assert.deepEqual(parse("foul yellow jackets 4", g), [{ type: "foul", team: "Opponent", player: 4 }]);
+  // Without the setting, silver is matched by color: closer to white than gold.
+  assert.deepEqual(parse("score silver 32"), [{ type: "shot", team: "Hornets", player: 32, made: true }]);
+});
+
+test("more ways to say it", () => {
+  assert.deepEqual(parse("brick gold 4"), [{ type: "shot", team: "Opponent", player: 4, made: false }]);
+  assert.deepEqual(parse("air ball gold 4"), [{ type: "shot", team: "Opponent", player: 4, made: false }]);
+  assert.deepEqual(parse("swish white 32"), [{ type: "shot", team: "Hornets", player: 32, made: true }]);
+  assert.deepEqual(parse("foul shot white 32 good"), [{ type: "freeThrow", team: "Hornets", player: 32, made: true }]);
+  assert.deepEqual(parse("clock stop"), [{ type: "clock", run: false }]);
+  assert.deepEqual(parse("clock start"), [{ type: "clock", run: true }]);
+  assert.deepEqual(parse("defensive rebound gold 10"), [{ type: "rebound", team: "Opponent", player: 10 }]);
+});
+
 test("words with no play are reported, not guessed", () => {
   const [result] = parseCommands("white 32", game());
   assert.equal(result.type, "error");

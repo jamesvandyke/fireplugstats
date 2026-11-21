@@ -8,7 +8,9 @@
 //
 // `game` needs teamNames, teamColors and rosters (as stored by the app), and may
 // include lineups: { Hornets: [numbers], Opponent: [numbers] } of players on the
-// court, used to work out the team when none is said.
+// court, used to work out the team when none is said, and voiceWords:
+// { Hornets: "white, silver", Opponent: "" }, extra comma-separated words that
+// name each team.
 
 export const TEAMS = ["Hornets", "Opponent"];
 
@@ -56,7 +58,7 @@ const UNITS = {
   six: 6,
   seven: 7,
   eight: 8, ate: 8,
-  nine: 9,
+  nine: 9, nein: 9,
 };
 const TEENS = {
   ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
@@ -68,7 +70,9 @@ const TENS = { twenty: 20, thirty: 30, forty: 40, fourty: 40, fifty: 50, sixty: 
 const VERBS = {
   score: "made", scores: "made", scored: "made", made: "made", make: "made", makes: "made",
   bucket: "made", basket: "made", hit: "made", hits: "made", good: "made",
+  sank: "made", sinks: "made", drained: "made", drains: "made", swish: "made", scoring: "made",
   miss: "missed", missed: "missed", misses: "missed", mist: "missed", mister: "missed",
+  brick: "missed", bricked: "missed", bricks: "missed", airball: "missed",
   freethrow: "freeThrow",
   rebound: "rebound", rebounds: "rebound", board: "rebound", boards: "rebound",
   norebound: "noRebound", skip: "noRebound",
@@ -92,12 +96,15 @@ export function normalizeText(text) {
     .replace(/[^a-z0-9' ]+/g, " ")
     .replace(/'s\b/g, "")
     .replace(/'/g, "")
-    .replace(/\bfree\s*throws?\b/g, " freethrow ")
+    .replace(/\b(?:free\s*throws?|foul\s+shots?)\b/g, " freethrow ")
+    .replace(/\bair\s+ball\b/g, " airball ")
     .replace(/\btime\s*outs?\b/g, " timeout ")
     .replace(/\b(?:ref|refs|referee|referees|official|officials)\s+timeout\b/g, " reftimeout ")
     .replace(/\bno\s+(?:rebound|board)s?\b/g, " norebound ")
     .replace(/\b(?:start|resume|run)\s+(?:the\s+)?clock\b/g, " clockstart ")
     .replace(/\b(?:stop|pause|hold)\s+(?:the\s+)?clock\b/g, " clockstop ")
+    .replace(/\bclock\s+(?:start|go|run|resume)\b/g, " clockstart ")
+    .replace(/\bclock\s+(?:stop|pause|hold)\b/g, " clockstop ")
     .replace(/\bin\s+for\b/g, " for ")
     .replace(/\bdouble\s+(?:zero|oh|o)\b/g, " 0 ")
     .replace(/\s+/g, " ")
@@ -110,11 +117,21 @@ function words(text) {
 
 // Tokens for a team named in the text. Team names are matched first so a team
 // called "Gold Rush" isn't read as the color gold.
+export function teamWords(game, team) {
+  const extra = String(game.voiceWords?.[team] || "").split(",");
+  return [game.teamNames?.[team] || "", ...extra]
+    .map(normalizeText)
+    .filter((words) => words && !VERBS[words] && !/^\d+$/.test(words));
+}
+
 function tagTeams(text, game) {
   let tagged = ` ${text} `;
-  for (const team of TEAMS) {
-    const name = normalizeText(game.teamNames?.[team] || "");
-    if (name && !VERBS[name]) tagged = tagged.split(` ${name} `).join(` @${team} `);
+  // Longest first, so "gold rush" is tagged before a plain "gold".
+  const names = TEAMS
+    .flatMap((team) => teamWords(game, team).map((words) => ({ team, words })))
+    .sort((a, b) => b.words.length - a.words.length);
+  for (const { team, words } of names) {
+    tagged = tagged.replace(new RegExp(` ${words}(?= )`, "g"), ` @${team}`);
   }
   return tagged
     .replace(/ (?:home|hometeam) /g, " @Hornets ")

@@ -1,6 +1,6 @@
 # Voice input plan
 
-Status: draft for review, updated 2026-11-21 with James's answers. No code yet.
+Status: phases 1–4 built on `claude/voice-input-8htatg` (PR #32), 2026-11-21. Not yet tried on a real iPhone.
 
 Target device: iPhone 16, Safari (home screen or tab both fine). Hold-to-talk. Teams are named by jersey color.
 
@@ -94,7 +94,7 @@ Known risks to test early on a real phone in a gym:
 1. **Parser and tests.** `voice.mjs` and its tests only. A hidden text box on the Track tab (`?voice=text`) lets us type commands to try the flow on any browser.
 2. **Mic and banner.** Web Speech wiring, mic button, banner with undo, no-location commands (rebound, foul, steal, timeout, clock, undo). Test on James's phone at a practice or a game.
 3. **Shots.** Score/miss opening the court, the "Tap for" label, stacked shots, the miss to rebound hand-off, free throws.
-4. **Polish from real use.** Optional voice names in Manage Teams, extra synonyms from what the engine actually hears.
+4. **Polish.** Optional extra team words per game in Settings (instead of Manage Teams, so nothing changes on the server), and more synonyms (brick, air ball, swish, foul shot, "clock stop"). More will come from what the engine actually hears at a game.
 
 Each phase is its own PR off this branch, merged only when James says so.
 

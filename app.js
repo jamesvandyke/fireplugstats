@@ -1,6 +1,6 @@
 import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=19";
 import { applyPickedRosters, sanitizePlayerName, sanitizeRoster } from "./rosters.mjs?v=1";
-import { describeCommand, parseSegment, splitPlays } from "./voice.mjs?v=2";
+import { describeCommand, parseSegment, splitPlays } from "./voice.mjs?v=3";
 import { createVoiceListener, speechSupported } from "./speech.mjs?v=1";
 
 const STORAGE_KEY = "fireplug.stats.game.v1";
@@ -21,6 +21,15 @@ const DEFAULT_TEAM_COLORS = {
 const state = loadState();
 let draft = {};
 let step = "player";
+// Shots called by voice that still need a court tap, oldest first. The first one
+// is on the court now. Each is { team, player, made, time, afterId, seq, rebound, phrase }:
+// afterId is the last play logged when it was called and seq the order it was
+// called in, so it slots in before anything said after it; rebound is a rebound
+// said before the tap ("none" for no rebound).
+let pendingShots = [];
+let shotSeq = 0;
+// Call order of plays placed from the queue, by event id.
+const placedSeq = new Map();
 let clockTimer = null;
 let liveClockTicks = 0;
 let savedGameId = null;
@@ -60,6 +69,8 @@ function defaultState() {
       Opponent: "Opponent",
     },
     teamColors: { ...DEFAULT_TEAM_COLORS },
+    // Extra comma-separated words that name each team by voice.
+    voiceWords: { Hornets: "", Opponent: "" },
     rosters: {
       Hornets: cloneRoster(DEFAULT_ROSTERS.Hornets),
       Opponent: cloneRoster(DEFAULT_ROSTERS.Opponent),
@@ -108,6 +119,10 @@ function migrateState(saved) {
       Hornets: sanitizeColor(saved?.teamColors?.Hornets, DEFAULT_TEAM_COLORS.Hornets),
       Opponent: sanitizeColor(saved?.teamColors?.Opponent, DEFAULT_TEAM_COLORS.Opponent),
     },
+    voiceWords: {
+      Hornets: sanitizeVoiceWords(saved?.voiceWords?.Hornets),
+      Opponent: sanitizeVoiceWords(saved?.voiceWords?.Opponent),
+    },
     rosters: {
       Hornets: sanitizeRoster(saved?.rosters?.Hornets || DEFAULT_ROSTERS.Hornets),
       Opponent: sanitizeRoster(saved?.rosters?.Opponent || DEFAULT_ROSTERS.Opponent),
@@ -124,6 +139,10 @@ function migrateState(saved) {
     events: Array.isArray(saved?.events) ? saved.events : [],
     gameStarted: Boolean(saved?.gameStarted),
   };
+}
+
+function sanitizeVoiceWords(value) {
+  return String(value || "").replace(/[^\p{L}\p{N} ,'-]/gu, "").slice(0, 60);
 }
 
 function sanitizeNumbers(values) {
@@ -230,6 +249,7 @@ async function startGame() {
   state.teamNames.Opponent = awayName;
   state.teamColors.Hornets = homeColor;
   state.teamColors.Opponent = awayColor;
+  state.voiceWords = { Hornets: "", Opponent: "" };
   state.periodMode = periodMode;
   state.periodSeconds = periodSeconds;
   applyPickedRosters(state, pickedRosters);
@@ -543,13 +563,53 @@ function setStep(nextStep) {
         : meta || playerLabel(draft.team, Number(draft.player));
   $("#backBtn").disabled = step === "player";
   if (step === "location") applyCourtOrientation($("#shotCourt"), draft.team);
+  renderShotQueue();
   if (step === "subIn" || step === "subOut") renderSubChoices();
 }
 
 function resetDraft() {
-  draft = {};
   $("#pendingShotMarker").style.display = "none";
+  if (pendingShots.length) {
+    const shot = pendingShots[0];
+    draft = { team: shot.team, player: String(shot.player), time: shot.time, action: "shot", made: shot.made, queued: shot };
+    setStep("location");
+    return;
+  }
+  draft = {};
   setStep("player");
+}
+
+// Drops the shot on the court now (from the ✕, Back or "cancel").
+function dropCurrentShot() {
+  if (draft.queued) pendingShots = pendingShots.filter((shot) => shot !== draft.queued);
+  resetDraft();
+  render();
+}
+
+function renderShotQueue() {
+  const box = $("#shotQueue");
+  const shot = step === "location" ? draft.queued : null;
+  box.hidden = !shot;
+  if (!shot) return;
+  const rebound = shot.rebound && shot.rebound !== "none"
+    ? `, rebound ${playerLabel(shot.rebound.team, shot.rebound.player)}`
+    : "";
+  $("#shotQueueText").textContent = `Tap for: ${playerLabel(shot.team, shot.player)}, ${shot.made ? "made" : "missed"}${rebound}`;
+  const more = pendingShots.length - 1;
+  $("#shotQueueMore").textContent = more > 0 ? `${more} more waiting` : "";
+}
+
+// Adds a play right after the play with afterId (null means before everything),
+// past any queued plays called before it. At the end when afterId is undefined
+// or that play is gone.
+function insertEvent(event, afterId, seq = Infinity) {
+  let index = afterId === null ? 0 : state.events.findIndex((item) => item.id === afterId) + 1;
+  if (afterId === undefined || (afterId !== null && index === 0)) {
+    state.events.push(event);
+    return;
+  }
+  while (index < state.events.length && placedSeq.get(state.events[index].id) < seq) index += 1;
+  state.events.splice(index, 0, event);
 }
 
 function renderScore() {
@@ -627,6 +687,8 @@ function renderRoster() {
   $("#awayTeamName").value = teamName("Opponent");
   $("#homeTeamColor").value = teamColor("Hornets");
   $("#awayTeamColor").value = teamColor("Opponent");
+  $("#homeVoiceWords").value = state.voiceWords?.Hornets || "";
+  $("#awayVoiceWords").value = state.voiceWords?.Opponent || "";
   $("#homeRosterLabel").textContent = `${teamName("Hornets")} roster`;
   $("#awayRosterLabel").textContent = `${teamName("Opponent")} roster`;
   $$("input[name='periodMode']").forEach((input) => {
@@ -1022,9 +1084,26 @@ function saveDraft() {
       event.location = draft.location;
     }
   }
-  state.events.push(event);
+  const queued = draft.queued;
+  if (queued) {
+    pendingShots = pendingShots.filter((shot) => shot !== queued);
+    placedSeq.set(event.id, queued.seq);
+    insertEvent(event, queued.afterId, queued.seq);
+    voicePhrasePlays.get(queued.phrase)?.push(event.id);
+  } else {
+    state.events.push(event);
+  }
   persist();
-  if (event.action === "shot" && !event.made) {
+  if (queued && !event.made && queued.rebound) {
+    if (queued.rebound !== "none") {
+      draft = { missedShotId: event.id, time: queued.rebound.time };
+      const reboundId = saveRebound(queued.rebound.team, queued.rebound.player);
+      voicePhrasePlays.get(queued.rebound.phrase)?.push(reboundId);
+      return;
+    }
+    resetDraft();
+    render();
+  } else if (event.action === "shot" && !event.made) {
     draft = { missedShotId: event.id, time: event.time };
     render();
     setStep("rebound");
@@ -1036,20 +1115,25 @@ function saveDraft() {
 }
 
 function saveRebound(team, player) {
-  state.events.push({
-    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+  const missedShotId = draft.missedShotId;
+  const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+  // A rebound goes right after its miss and shares its place in the call order.
+  if (placedSeq.has(missedShotId)) placedSeq.set(id, placedSeq.get(missedShotId));
+  insertEvent({
+    id,
     period: state.period,
     periodMode: state.periodMode,
     time: draft.time || state.lastTime,
     team,
     player: Number(player),
     action: "rebound",
-    missedShotId: draft.missedShotId,
-  });
+    missedShotId,
+  }, state.events.some((event) => event.id === missedShotId) ? missedShotId : undefined);
   persist();
   resetDraft();
   render();
   publishLiveSoon();
+  return id;
 }
 
 function saveSettings(showStatus = true) {
@@ -1063,6 +1147,10 @@ function saveSettings(showStatus = true) {
   state.teamNames.Opponent = sanitizeTeamName($("#awayTeamName").value, "Opponent");
   state.teamColors.Hornets = sanitizeColor($("#homeTeamColor").value, DEFAULT_TEAM_COLORS.Hornets);
   state.teamColors.Opponent = sanitizeColor($("#awayTeamColor").value, DEFAULT_TEAM_COLORS.Opponent);
+  state.voiceWords = {
+    Hornets: sanitizeVoiceWords($("#homeVoiceWords").value),
+    Opponent: sanitizeVoiceWords($("#awayVoiceWords").value),
+  };
   state.periodMode = $("input[name='periodMode']:checked")?.value === "halves" ? "halves" : "quarters";
   state.period = Math.min(state.period, maxPeriods());
   state.periodSeconds = periodClockLength($("#periodLength").value);
@@ -1121,6 +1209,7 @@ function voiceGame() {
   return {
     teamNames: state.teamNames,
     teamColors: state.teamColors,
+    voiceWords: state.voiceWords,
     rosters: state.rosters,
     lineups: { Hornets: currentLineup(state, "Hornets"), Opponent: currentLineup(state, "Opponent") },
   };
@@ -1128,44 +1217,49 @@ function voiceGame() {
 
 let voiceBannerTimer = null;
 
-function showVoiceBanner(lines, { undoIds = [], listening = false } = {}) {
+function showVoiceBanner(lines, { phrase = null, listening = false } = {}) {
   const banner = $("#voiceBanner");
   clearTimeout(voiceBannerTimer);
   banner.classList.toggle("listening", listening);
   banner.innerHTML = lines
     .map((line) => `<p class="${line.ok ? "" : "voice-error"}">${escapeHtml(line.text)}</p>`)
-    .join("") + (undoIds.length ? `<button class="voice-undo" type="button">Undo</button>` : "");
+    .join("") + (phrase ? `<button class="voice-undo" type="button">Undo</button>` : "");
   banner.hidden = false;
-  banner.querySelector(".voice-undo")?.addEventListener("click", () => undoVoicePlays(undoIds));
+  banner.querySelector(".voice-undo")?.addEventListener("click", () => undoVoicePlays(phrase));
   // Clear a fully understood phrase after a while; problems stay until the next one.
   if (!listening && lines.every((line) => line.ok)) {
     voiceBannerTimer = setTimeout(() => { banner.hidden = true; }, 8000);
   }
 }
 
-// Takes back the plays one phrase logged, as long as nothing was logged after them.
-function undoVoicePlays(ids) {
-  const tail = state.events.slice(-ids.length).map((event) => event.id);
-  if (tail.join() !== ids.join()) {
-    showVoiceBanner([{ ok: false, text: "Other plays came after those. Use the Undo button above." }]);
-    return;
-  }
-  state.events.splice(-ids.length);
+// Takes back the plays one phrase logged, and any of its shots still waiting for a tap.
+function undoVoicePlays(phrase) {
+  const removed = new Set(voicePhrasePlays.get(phrase) || []);
+  state.events = state.events.filter((event) => !removed.has(event.id));
+  pendingShots = pendingShots.filter((shot) => shot.phrase !== phrase);
   persist();
   resetDraft();
   render();
   publishLiveSoon();
-  showVoiceBanner([{ ok: true, text: ids.length === 1 ? "Undid 1 play." : `Undid ${ids.length} plays.` }]);
+  showVoiceBanner([{ ok: true, text: "Undid that." }]);
 }
+
+let voicePhraseCount = 0;
+// Ids of the plays each phrase logged, including shots placed after it was said.
+const voicePhrasePlays = new Map();
 
 function runVoiceText(text) {
   const before = new Set(state.events.map((event) => event.id));
+  const phrase = ++voicePhraseCount;
   // Each play is resolved against the game as the plays before it left it.
-  const results = splitPlays(text, voiceGame()).map((play) => runVoiceCommand(parseSegment(play, voiceGame())));
+  const results = splitPlays(text, voiceGame())
+    .map((play) => runVoiceCommand({ ...parseSegment(play, voiceGame()), phrase }));
   if (!results.length) results.push({ ok: false, text: `Heard "${text}" but no play.` });
   const added = state.events.filter((event) => !before.has(event.id)).map((event) => event.id);
-  const undoable = results.some((result) => result.isUndo) ? [] : added;
-  showVoiceBanner(results, { undoIds: undoable });
+  voicePhrasePlays.set(phrase, added);
+  const queuedShots = pendingShots.some((shot) => shot.phrase === phrase);
+  const undoable = !results.some((result) => result.isUndo) && (added.length || queuedShots);
+  showVoiceBanner(results, { phrase: undoable ? phrase : null });
 }
 
 function voiceErrorText(code) {
@@ -1205,16 +1299,26 @@ function runVoiceCommand(command) {
   if (command.type === "error") return { ok: false, text: `"${command.heard}": ${command.message}` };
   const label = describeCommand(command, game);
   const fail = (reason) => ({ ok: false, text: `${label}: ${reason}` });
-  const awaitingTap = step === "location" || step === "result";
-  if (awaitingTap && !["undo", "cancel", "clock"].includes(command.type)) {
-    return fail("tap the court for the last shot first, or say cancel.");
+  // A shot being entered by taps, waiting on Made or Missed.
+  if (step === "result" && !["undo", "cancel", "clock"].includes(command.type)) {
+    return fail("pick Made or Missed for the last shot first.");
   }
   const { team, player } = command;
+  // The latest missed shot still waiting for a tap with no rebound yet.
+  const openMiss = [...pendingShots].reverse().find((shot) => !shot.made && !shot.rebound);
   switch (command.type) {
-    case "shot":
-      draft = { team, player: String(player), time: state.lastTime, action: "shot", made: command.made };
-      setStep("location");
-      return { ok: true, text: `${label}. Tap the court.` };
+    case "shot": {
+      const lastEvent = state.events.at(-1);
+      pendingShots.push({
+        team, player, made: command.made, time: state.lastTime,
+        afterId: lastEvent ? lastEvent.id : null, seq: ++shotSeq, phrase: command.phrase,
+      });
+      // Start on the court unless it's already busy or a rebound is being picked.
+      if (!(step === "location" && draft.queued) && step !== "rebound") resetDraft();
+      else renderShotQueue();
+      const waiting = pendingShots.length - 1;
+      return { ok: true, text: `${label}. ${waiting ? `Tap the court (${waiting} ahead).` : "Tap the court."}` };
+    }
     case "freeThrow":
       draft = {
         team, player: String(player), time: state.lastTime, action: "shot",
@@ -1223,13 +1327,24 @@ function runVoiceCommand(command) {
       saveDraft();
       break;
     case "rebound":
+      if (step !== "rebound" && openMiss) {
+        openMiss.rebound = { team, player, time: state.lastTime, phrase: command.phrase };
+        renderShotQueue();
+        return { ok: true, text: `${label} (saved with the miss)` };
+      }
+      if (step !== "rebound") draft = {};
       saveRebound(team, player);
       break;
     case "noRebound":
-      if (step !== "rebound") return fail("no missed shot is waiting for a rebound.");
-      resetDraft();
-      render();
-      publishLiveSoon();
+      if (step === "rebound") {
+        draft = {};
+        resetDraft();
+        render();
+        publishLiveSoon();
+        break;
+      }
+      if (!openMiss) return fail("no missed shot is waiting for a rebound.");
+      openMiss.rebound = "none";
       break;
     case "foul":
     case "steal":
@@ -1253,8 +1368,11 @@ function runVoiceCommand(command) {
       undoLastPlay();
       return { ok: true, text: label, isUndo: true };
     case "cancel":
-      resetDraft();
-      render();
+      if (draft.queued) dropCurrentShot();
+      else {
+        resetDraft();
+        render();
+      }
       break;
     default:
       return fail("not supported yet.");
@@ -1329,8 +1447,11 @@ function wireEvents() {
     draft.points = 1;
     draft.location = null;
     $("#pendingShotMarker").style.display = "none";
-    setStep("result");
+    if (typeof draft.made === "boolean") saveDraft();
+    else setStep("result");
   });
+
+  $("#dropShotBtn").addEventListener("click", dropCurrentShot);
 
   $$(".action-btn[data-made]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1381,6 +1502,7 @@ function wireEvents() {
 
   $("#backBtn").addEventListener("click", () => {
     if (step === "action") resetDraft();
+    else if (step === "location" && draft.queued) dropCurrentShot();
     else if (step === "location") setStep("action");
     else if (step === "result") setStep("location");
     else if (step === "rebound") resetDraft();
@@ -1413,6 +1535,7 @@ function wireEvents() {
     if (!confirm("Start a new game?")) return;
     if (state.events.length > 0) saveGameToServer();
     savedGameId = null;
+    pendingShots = [];
     const courtOrientation = state.courtOrientation;
     const live = state.live;
     Object.assign(state, defaultState(), {
