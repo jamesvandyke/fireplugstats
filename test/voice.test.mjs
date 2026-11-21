@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { describeCommand, normalizeText, parseCommands, teamForColor } from "../voice.mjs";
+import { describeCommand, normalizeText, parseCommands, parseSegment, splitPlays, teamForColor } from "../voice.mjs";
 
 const roster = (...numbers) => numbers.map((number) => ({ number, name: "" }));
 
@@ -140,6 +140,8 @@ test("subs", () => {
   assert.deepEqual(parse("sub 10 for 33"), [{ type: "sub", team: "Opponent", playerIn: 10, playerOut: 33 }]);
   assert.match(parse("sub white 12")[0].message, /sub white 12 for 5/);
   assert.match(parse("sub white 12 for 99")[0].message, /no #99/);
+  assert.match(parse("sub white 1 2 for 5")[0].message, /one number each side/);
+  assert.match(parse("sub white 12 for 3 5")[0].message, /one number each side/);
 });
 
 test("clock, undo, cancel and no rebound", () => {
@@ -149,6 +151,15 @@ test("clock, undo, cancel and no rebound", () => {
   assert.deepEqual(parse("undo"), [{ type: "undo" }]);
   assert.deepEqual(parse("cancel"), [{ type: "cancel" }]);
   assert.deepEqual(parse("no rebound"), [{ type: "noRebound" }]);
+});
+
+test("plays can be resolved one at a time against the lineup they'll meet", () => {
+  const g = game({ lineups: { Hornets: [0, 3, 5, 17, 32], Opponent: [2, 4, 10, 23, 12] }, rosters: { Hornets: roster(0, 3, 5, 12, 17, 32), Opponent: roster(2, 4, 10, 12, 23, 33) } });
+  const [sub1, sub2, foul] = splitPlays("sub white 12 for 5 sub gold 33 for 12 foul 12", g);
+  assert.equal(parseSegment(sub1, g).type, "sub");
+  assert.equal(parseSegment(sub2, g).type, "sub");
+  const after = { ...g, lineups: { Hornets: [0, 3, 12, 17, 32], Opponent: [2, 4, 10, 23, 33] } };
+  assert.deepEqual(parseSegment(foul, after), { type: "foul", team: "Hornets", player: 12, heard: "foul 12" });
 });
 
 test("words with no play are reported, not guessed", () => {

@@ -1,6 +1,6 @@
 import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=19";
 import { applyPickedRosters, sanitizePlayerName, sanitizeRoster } from "./rosters.mjs?v=1";
-import { describeCommand, parseCommands } from "./voice.mjs?v=1";
+import { describeCommand, parseSegment, splitPlays } from "./voice.mjs?v=2";
 
 const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
@@ -1100,7 +1100,8 @@ function voiceGame() {
 }
 
 function runVoiceText(text) {
-  const results = parseCommands(text, voiceGame()).map(runVoiceCommand);
+  // Each play is resolved against the game as the plays before it left it.
+  const results = splitPlays(text, voiceGame()).map((play) => runVoiceCommand(parseSegment(play, voiceGame())));
   if (!results.length) results.push({ ok: false, text: "Didn't hear anything." });
   const banner = $("#voiceBanner");
   banner.innerHTML = results

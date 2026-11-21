@@ -260,7 +260,7 @@ function resolvePlayer(team, number, game) {
   return { error: `Nobody wears #${number}.` };
 }
 
-function parseSegment(seg, game) {
+export function parseSegment(seg, game) {
   const { verb, rest } = seg;
   const heard = heardText(seg.words);
   const fail = (message) => ({ type: "error", heard, message });
@@ -287,9 +287,11 @@ function parseSegment(seg, game) {
   if (verb === "sub") {
     const at = rest.indexOf("for");
     if (at === -1) return fail("Say it like \"sub white 12 for 5\".");
-    const [playerIn] = readNumbers(rest.slice(0, at));
-    const [playerOut] = readNumbers(rest.slice(at + 1));
-    if (playerIn === undefined || playerOut === undefined) return fail("Say it like \"sub white 12 for 5\".");
+    const ins = readNumbers(rest.slice(0, at));
+    const outs = readNumbers(rest.slice(at + 1));
+    if (ins.length !== 1 || outs.length !== 1) return fail("Say it like \"sub white 12 for 5\", one number each side.");
+    const [playerIn] = ins;
+    const [playerOut] = outs;
     let team = found.team;
     if (!team) {
       const both = TEAMS.filter((t) => rosterNumbers(game, t).includes(playerIn) && onCourt(game, t).includes(playerOut));
@@ -322,9 +324,15 @@ function parseSegment(seg, game) {
   return fail("Didn't understand that play.");
 }
 
+// The plays in the text, not yet resolved to commands. Resolve each one with
+// parseSegment just before running it, so a team left out is worked out from
+// the lineup after any earlier subs in the same breath.
+export function splitPlays(text, game) {
+  return segment(words(tagTeams(normalizeText(text), game)));
+}
+
 export function parseCommands(text, game) {
-  const tokens = words(tagTeams(normalizeText(text), game));
-  return segment(tokens).map((seg) => parseSegment(seg, game));
+  return splitPlays(text, game).map((seg) => parseSegment(seg, game));
 }
 
 // A short line for the banner, e.g. "Made shot: White #32".
