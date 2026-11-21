@@ -1145,3 +1145,45 @@ textarea {
   font-weight: 900;
   border-radius: 8px;
 }
+
+.voice-text {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.voice-text[hidden],
+.voice-banner[hidden] {
+  display: none;
+}
+
+.voice-text input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.voice-banner {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  border-left: 4px solid var(--made);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.voice-banner p {
+  margin: 2px 0;
+}
+
+.voice-banner .voice-error {
+  color: var(--missed);
+}

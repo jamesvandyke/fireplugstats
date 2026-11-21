@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=20">
+    <link rel="stylesheet" href="styles.css?v=21">
   </head>
   <body>
     <div id="setupView" style="display:none">
@@ -85,6 +85,11 @@
       </nav>
 
       <section class="view active" id="trackView">
+        <form class="voice-text" id="voiceTextForm" hidden>
+          <input id="voiceTextInput" type="text" placeholder="Type a play, e.g. score white 32" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Voice command">
+          <button class="text-btn" type="submit">Go</button>
+        </form>
+        <div class="voice-banner" id="voiceBanner" role="status" hidden></div>
         <div class="event-panel">
           <div class="flow-head">
             <button class="icon-btn" id="backBtn" aria-label="Back">‹</button>
@@ -355,6 +360,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20" type="module"></script>
+    <script src="app.js?v=21" type="module"></script>
   </body>
 </html>

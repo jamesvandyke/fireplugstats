@@ -1,5 +1,6 @@
 import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=19";
 import { applyPickedRosters, sanitizePlayerName, sanitizeRoster } from "./rosters.mjs?v=1";
+import { describeCommand, parseCommands } from "./voice.mjs?v=1";
 
 const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
@@ -1065,6 +1066,110 @@ function saveSettings(showStatus = true) {
   return true;
 }
 
+function undoLastPlay() {
+  state.events.pop();
+  persist();
+  resetDraft();
+  render();
+  publishLiveSoon();
+}
+
+// Voice commands. Each one runs through the same functions the buttons use.
+// For now commands are typed into a box shown with ?voice=text (hidden again
+// with ?voice=off); the microphone comes next.
+const VOICE_TEXT_KEY = "fireplug.voice.text";
+
+function setupVoiceText() {
+  try {
+    const mode = new URLSearchParams(location.search).get("voice");
+    if (mode === "text") localStorage.setItem(VOICE_TEXT_KEY, "1");
+    if (mode === "off") localStorage.removeItem(VOICE_TEXT_KEY);
+    $("#voiceTextForm").hidden = localStorage.getItem(VOICE_TEXT_KEY) !== "1";
+  } catch {
+    $("#voiceTextForm").hidden = true;
+  }
+}
+
+function voiceGame() {
+  return {
+    teamNames: state.teamNames,
+    teamColors: state.teamColors,
+    rosters: state.rosters,
+    lineups: { Hornets: currentLineup(state, "Hornets"), Opponent: currentLineup(state, "Opponent") },
+  };
+}
+
+function runVoiceText(text) {
+  const results = parseCommands(text, voiceGame()).map(runVoiceCommand);
+  if (!results.length) results.push({ ok: false, text: "Didn't hear anything." });
+  const banner = $("#voiceBanner");
+  banner.innerHTML = results
+    .map((result) => `<p class="${result.ok ? "" : "voice-error"}">${escapeHtml(result.text)}</p>`)
+    .join("");
+  banner.hidden = false;
+}
+
+function runVoiceCommand(command) {
+  const game = voiceGame();
+  if (command.type === "error") return { ok: false, text: `"${command.heard}": ${command.message}` };
+  const label = describeCommand(command, game);
+  const fail = (reason) => ({ ok: false, text: `${label}: ${reason}` });
+  const awaitingTap = step === "location" || step === "result";
+  if (awaitingTap && !["undo", "cancel", "clock"].includes(command.type)) {
+    return fail("tap the court for the last shot first, or say cancel.");
+  }
+  const { team, player } = command;
+  switch (command.type) {
+    case "shot":
+      draft = { team, player: String(player), time: state.lastTime, action: "shot", made: command.made };
+      setStep("location");
+      return { ok: true, text: `${label}. Tap the court.` };
+    case "freeThrow":
+      draft = {
+        team, player: String(player), time: state.lastTime, action: "shot",
+        shotType: "freeThrow", points: 1, location: null, made: command.made,
+      };
+      saveDraft();
+      break;
+    case "rebound":
+      saveRebound(team, player);
+      break;
+    case "noRebound":
+      if (step !== "rebound") return fail("no missed shot is waiting for a rebound.");
+      resetDraft();
+      render();
+      publishLiveSoon();
+      break;
+    case "foul":
+    case "steal":
+      draft = { team, player: String(player), time: state.lastTime, action: command.type };
+      saveDraft();
+      break;
+    case "sub":
+      if (!currentLineup(state, team).includes(command.playerOut)) return fail(`#${command.playerOut} isn't on the court.`);
+      if (!bench(state, team).includes(command.playerIn)) return fail(`#${command.playerIn} isn't on the bench.`);
+      saveSub(team, command.playerIn, command.playerOut);
+      break;
+    case "timeout":
+      return fail("timeouts aren't recorded yet. They're coming in the next update.");
+    case "clock":
+      if (command.run === "toggle" || command.run !== state.clockRunning) toggleClock();
+      publishLiveSoon();
+      break;
+    case "undo":
+      if (!state.events.length) return fail("nothing to undo.");
+      undoLastPlay();
+      break;
+    case "cancel":
+      resetDraft();
+      render();
+      break;
+    default:
+      return fail("not supported yet.");
+  }
+  return { ok: true, text: label };
+}
+
 function wireEvents() {
   document.addEventListener("click", (event) => {
     const rebounder = event.target.closest(".rebound-player-btn");
@@ -1103,6 +1208,7 @@ function wireEvents() {
   $$(".action-btn[data-action]").forEach((button) => {
     button.addEventListener("click", () => {
       draft.action = button.dataset.action;
+      delete draft.made;
       if (draft.action === "shot") setStep("location");
       else saveDraft();
     });
@@ -1121,7 +1227,9 @@ function wireEvents() {
     marker.style.left = `${x}%`;
     marker.style.top = `${y}%`;
     marker.style.display = "block";
-    setStep("result");
+    // A shot called by voice already knows whether it went in.
+    if (typeof draft.made === "boolean") saveDraft();
+    else setStep("result");
   });
 
   $("#freeThrowBtn").addEventListener("click", () => {
@@ -1165,12 +1273,14 @@ function wireEvents() {
     $("#clockDialog").showModal();
   });
 
-  $("#undoBtn").addEventListener("click", () => {
-    state.events.pop();
-    persist();
-    resetDraft();
-    render();
-    publishLiveSoon();
+  $("#undoBtn").addEventListener("click", undoLastPlay);
+
+  $("#voiceTextForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("#voiceTextInput");
+    if (!input.value.trim()) return;
+    runVoiceText(input.value);
+    input.value = "";
   });
 
   $("#backBtn").addEventListener("click", () => {
@@ -1283,6 +1393,7 @@ $("#setupAwayTeam").addEventListener("change", (e) => pickSetupTeam(e.target.val
 $("#startGameBtn").addEventListener("click", startGame);
 
 wireEvents();
+setupVoiceText();
 resetDraft();
 registerServiceWorker();
 

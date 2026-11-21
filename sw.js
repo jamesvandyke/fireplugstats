@@ -1,17 +1,18 @@
-const CACHE = "fireplug-stats-v22";
+const CACHE = "fireplug-stats-v23";
 const ASSETS = [
   "./",
   "./index.html",
   "./watch.html",
   "./summary.html",
   "./admin.html",
-  "./styles.css?v=20",
-  "./app.js?v=20",
+  "./styles.css?v=21",
+  "./app.js?v=21",
   "./watch.js?v=16",
   "./summary.js?v=20",
   "./lineups.mjs?v=19",
   "./rosters.mjs?v=1",
   "./colors.mjs?v=1",
+  "./voice.mjs?v=1",
   "./admin.js?v=17",
   "./manifest.webmanifest",
   "./icon.svg",
