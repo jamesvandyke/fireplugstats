@@ -1,7 +1,7 @@
 import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=19";
 import { applyPickedRosters, sanitizePlayerName, sanitizeRoster } from "./rosters.mjs?v=1";
 import { describeCommand, parseSegment, splitPlays } from "./voice.mjs?v=3";
-import { createVoiceListener, speechSupported } from "./speech.mjs?v=1";
+import { createVoiceListener, speechSupported } from "./speech.mjs?v=2";
 
 const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;
@@ -573,6 +573,8 @@ function resetDraft() {
     const shot = pendingShots[0];
     draft = { team: shot.team, player: String(shot.player), time: shot.time, action: "shot", made: shot.made, queued: shot };
     setStep("location");
+    // Bring the whole court above the mic bar so it can be tapped without scrolling.
+    $("#shotCourt").scrollIntoView?.({ block: "end", behavior: "smooth" });
     return;
   }
   draft = {};
@@ -1269,15 +1271,20 @@ function voiceErrorText(code) {
   if (code === "no-speech") return "Didn't hear anything. Hold the mic while you talk.";
   if (code === "network") return "Speech needs an internet connection.";
   if (code === "audio-capture") return "Couldn't use the microphone.";
+  if (code === "start-failed") return "The mic didn't start. Try again in a moment.";
   return `Speech stopped (${code}).`;
 }
 
 function setupMic() {
   const button = $("#micBtn");
   if (!speechSupported()) return;
-  button.hidden = false;
+  $("#micBar").hidden = false;
+  document.body.classList.add("has-mic");
   const listener = createVoiceListener({
-    onState: (on) => button.classList.toggle("listening", on),
+    onState: (on) => {
+      button.classList.toggle("listening", on);
+      $("#micLabel").textContent = on ? "Listening… let go when done" : "Hold to talk";
+    },
     onInterim: (text) => showVoiceBanner([{ ok: true, text: `"${text}"` }], { listening: true }),
     onText: runVoiceText,
     onError: (code) => showVoiceBanner([{ ok: false, text: voiceErrorText(code) }]),
