@@ -573,12 +573,23 @@ function resetDraft() {
     const shot = pendingShots[0];
     draft = { team: shot.team, player: String(shot.player), time: shot.time, action: "shot", made: shot.made, queued: shot };
     setStep("location");
-    // Bring the whole court above the mic bar so it can be tapped without scrolling.
-    $("#shotCourt").scrollIntoView?.({ block: "end", behavior: "smooth" });
+    revealCourt();
     return;
   }
   draft = {};
   setStep("player");
+}
+
+// Brings the whole court above the mic bar so a shot can be tapped without
+// scrolling. Instant, and only when needed: on iPhone a tap during a smooth
+// scroll only stops the scroll, so the first tap on the court was lost.
+function revealCourt() {
+  const court = $("#shotCourt");
+  const bar = $("#micBar");
+  const limit = bar && !bar.hidden ? bar.getBoundingClientRect().top : window.innerHeight;
+  const rect = court.getBoundingClientRect();
+  if (rect.top >= 0 && rect.bottom <= limit) return;
+  court.scrollIntoView?.({ block: "end", behavior: "instant" });
 }
 
 // Drops the shot on the court now (from the ✕, Back or "cancel").
