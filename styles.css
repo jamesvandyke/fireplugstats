@@ -1371,3 +1371,214 @@ body.has-mic #shotCourt {
   display: none;
 }
 
+
+/* Voice / Touch switch at the top of the Track tab. */
+.mode-switch {
+  width: max-content;
+  margin: 0 auto 10px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #ece5da;
+}
+
+.mode-switch[hidden] {
+  display: none;
+}
+
+.mode-switch button {
+  min-height: 40px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.mode-switch button[aria-pressed="true"] {
+  background: var(--ink);
+  color: white;
+  font-weight: 850;
+}
+
+.mode-switch svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mode-switch button:focus-visible,
+.voice-tap-btn:focus-visible,
+.voice-entry-undo:focus-visible,
+.link-btn:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.event-panel[hidden],
+.voice-home[hidden],
+.voice-live[hidden],
+.voice-empty[hidden] {
+  display: none;
+}
+
+/* Voice mode between plays: what was just heard, newest first. */
+.voice-home {
+  display: grid;
+  gap: 8px;
+}
+
+.voice-home-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.voice-home-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 900;
+  text-transform: none;
+}
+
+.link-btn {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.voice-live {
+  padding: 10px 12px;
+  color: var(--ink);
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.voice-live.listening {
+  border-color: #dc2626;
+  color: #991b1b;
+  font-style: italic;
+}
+
+.voice-live.voice-error {
+  border-color: #f59e0b;
+  background: #fef3c7;
+  color: #78350f;
+}
+
+.voice-log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.voice-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+}
+
+.voice-entry.latest {
+  border: 2px solid var(--ink);
+}
+
+.voice-entry > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.voice-heard {
+  color: #4b5563;
+  font-size: 13px;
+  font-style: italic;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.voice-line {
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 850;
+}
+
+.voice-line.voice-error {
+  color: #92400e;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.voice-entry.undone .voice-line {
+  color: #6b7280;
+  text-decoration: line-through;
+}
+
+.voice-entry-undo {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--missed);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.voice-entry.latest .voice-entry-undo {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: white;
+}
+
+.voice-undone {
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.voice-empty {
+  padding: 18px 14px;
+  border: 1px dashed #cfc6b8;
+  border-radius: 14px;
+  color: #4b5563;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.voice-tap-btn {
+  min-height: 48px;
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 850;
+}
