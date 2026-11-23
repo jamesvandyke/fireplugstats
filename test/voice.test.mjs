@@ -26,6 +26,11 @@ test("the examples from the plan", () => {
   assert.deepEqual(parse("rebound white 17", g), [{ type: "rebound", team: "Hornets", player: 17 }]);
   assert.deepEqual(parse("foul white 23", g), [{ type: "foul", team: "Hornets", player: 23 }]);
   assert.deepEqual(parse("steal white 5", g), [{ type: "steal", team: "Hornets", player: 5 }]);
+  assert.deepEqual(parse("block black 10", g), [{ type: "block", team: "Opponent", player: 10 }]);
+  assert.deepEqual(parse("miss white 32 blocked black 4", g), [
+    { type: "shot", team: "Hornets", player: 32, made: false },
+    { type: "block", team: "Opponent", player: 4 },
+  ]);
   assert.deepEqual(parse("timeout black", g), [{ type: "timeout", team: "Opponent" }]);
   assert.deepEqual(parse("start clock", g), [{ type: "clock", run: true }]);
 });

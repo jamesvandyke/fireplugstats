@@ -352,8 +352,12 @@ p {
   grid-template-columns: 1fr;
 }
 
+.action-btn.wide {
+  grid-column: 1 / -1;
+}
+
 .action-btn {
-  min-height: 132px;
+  min-height: 96px;
   border: 0;
   border-radius: 8px;
   background: var(--ink);
@@ -384,6 +388,7 @@ p {
 
 .court {
   position: relative;
+  touch-action: manipulation;
   width: 100%;
   aspect-ratio: 50 / 47;
   overflow: hidden;
@@ -1581,4 +1586,17 @@ body.has-mic #shotCourt {
   color: var(--ink);
   font-size: 15px;
   font-weight: 850;
+}
+
+/* Holding the mic must not start a text selection: on iPhone the next tap
+   would only clear it, so the court seemed to need two taps. */
+body.mode-voice #trackView {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+body.mode-voice #trackView input {
+  -webkit-user-select: text;
+  user-select: text;
 }

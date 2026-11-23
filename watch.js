@@ -124,6 +124,7 @@ function statsForEvents(events) {
     ftAtt: freeThrows.length,
     rebounds: events.filter((event) => event.action === "rebound").length,
     steals: events.filter((event) => event.action === "steal").length,
+    blocks: events.filter((event) => event.action === "block").length,
     fouls: events.filter((event) => event.action === "foul").length,
   };
 }
@@ -212,6 +213,7 @@ function boxRow(label, stats, className = "", minutes = "") {
         <td>${pct(stats.ftMade, stats.ftAtt)}</td>
         <td>${stats.rebounds}</td>
         <td>${stats.steals}</td>
+        <td>${stats.blocks}</td>
         <td>${stats.fouls}</td>
       </tr>`;
 }

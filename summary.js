@@ -35,6 +35,7 @@ function statsForEvents(events) {
     ftAtt: freeThrows.length,
     rebounds: events.filter((e) => e.action === "rebound").length,
     steals: events.filter((e) => e.action === "steal").length,
+    blocks: events.filter((e) => e.action === "block").length,
     fouls: events.filter((e) => e.action === "foul").length,
   };
 }
@@ -105,6 +106,7 @@ function boxRow(label, stats, className = "", minutes = "") {
     <td>${pct(stats.ftMade, stats.ftAtt)}</td>
     <td>${stats.rebounds}</td>
     <td>${stats.steals}</td>
+    <td>${stats.blocks}</td>
     <td>${stats.fouls}</td>
   </tr>`;
 }
@@ -128,7 +130,7 @@ function renderBoxScore(game) {
         <tr>
           <th>Player</th><th>MIN</th><th>PTS</th><th>FG</th><th>FG%</th>
           <th>3PT</th><th>3P%</th><th>FT</th><th>FT%</th>
-          <th>REB</th><th>STL</th><th>F</th>
+          <th>REB</th><th>STL</th><th>BLK</th><th>F</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -214,6 +216,7 @@ function renderTeamStats(game) {
         ${row("FT%", pct(homeStats.ftMade, homeStats.ftAtt), pct(awayStats.ftMade, awayStats.ftAtt))}
         ${row("REB", homeStats.rebounds, awayStats.rebounds)}
         ${row("STL", homeStats.steals, awayStats.steals)}
+        ${row("BLK", homeStats.blocks, awayStats.blocks)}
       </tbody>
     </table>
   </div>`;
