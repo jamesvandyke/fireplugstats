@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827">
     <title>Fireplug Stats</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=26">
+    <link rel="stylesheet" href="styles.css?v=27">
   </head>
   <body>
     <div id="setupView" style="display:none">
@@ -147,9 +147,10 @@
 
           <div class="step" id="actionStep">
             <div class="action-grid">
-              <button class="action-btn" data-action="shot">Shot</button>
+              <button class="action-btn wide" data-action="shot">Shot</button>
               <button class="action-btn" data-action="rebound">Rebound</button>
               <button class="action-btn" data-action="steal">Steal</button>
+              <button class="action-btn" data-action="block">Block</button>
               <button class="action-btn" data-action="foul">Foul</button>
             </div>
           </div>
@@ -231,6 +232,7 @@
                 <th>FT%</th>
                 <th>REB</th>
                 <th>STL</th>
+                <th>BLK</th>
                 <th>F</th>
               </tr>
             </thead>
@@ -410,6 +412,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=29" type="module"></script>
+    <script src="app.js?v=30" type="module"></script>
   </body>
 </html>

@@ -78,6 +78,7 @@ const VERBS = {
   norebound: "noRebound", skip: "noRebound",
   foul: "foul", fouls: "foul", fouled: "foul", fowl: "foul",
   steal: "steal", steals: "steal", steel: "steal", stole: "steal",
+  block: "block", blocks: "block", blocked: "block", swat: "block", swatted: "block", rejected: "block",
   sub: "sub", subs: "sub", substitution: "sub", substitute: "sub",
   timeout: "timeout", timeouts: "timeout",
   reftimeout: "refTimeout",
@@ -88,7 +89,7 @@ const VERBS = {
   cancel: "cancel", never: "cancel",
 };
 
-const PLAYER_PLAYS = new Set(["made", "missed", "freeThrow", "rebound", "foul", "steal"]);
+const PLAYER_PLAYS = new Set(["made", "missed", "freeThrow", "rebound", "foul", "steal", "block"]);
 
 export function normalizeText(text) {
   return ` ${String(text).toLowerCase()} `
@@ -283,7 +284,7 @@ export function parseSegment(seg, game) {
   const fail = (message) => ({ type: "error", heard, message });
 
   if (!verb) {
-    return fail("Didn't hear a play. Start with score, miss, free throw, rebound, foul, steal, sub, timeout or clock.");
+    return fail("Didn't hear a play. Start with score, miss, free throw, rebound, foul, steal, block, sub, timeout or clock.");
   }
   if (verb === "undo") return { type: "undo", heard };
   if (verb === "cancel") return { type: "cancel", heard };
@@ -361,6 +362,7 @@ export function describeCommand(command, game) {
     case "rebound": return `Rebound: ${who}`;
     case "foul": return `Foul: ${who}`;
     case "steal": return `Steal: ${who}`;
+    case "block": return `Block: ${who}`;
     case "sub": return `Sub: ${teamLabel(command.team, game)} #${command.playerIn} in for #${command.playerOut}`;
     case "timeout": return command.team ? `Timeout: ${teamLabel(command.team, game)}` : "Official's timeout";
     case "noRebound": return "No rebound";

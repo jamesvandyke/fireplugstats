@@ -1,6 +1,6 @@
 import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=19";
 import { applyPickedRosters, sanitizePlayerName, sanitizeRoster } from "./rosters.mjs?v=1";
-import { describeCommand, parseSegment, splitPlays } from "./voice.mjs?v=3";
+import { describeCommand, parseSegment, splitPlays } from "./voice.mjs?v=4";
 import { createVoiceListener, speechSupported } from "./speech.mjs?v=5";
 
 const STORAGE_KEY = "fireplug.stats.game.v1";
@@ -408,6 +408,7 @@ function statsForEvents(events) {
     ftAtt: freeThrows.length,
     rebounds: events.filter((event) => event.action === "rebound").length,
     steals: events.filter((event) => event.action === "steal").length,
+    blocks: events.filter((event) => event.action === "block").length,
     fouls: events.filter((event) => event.action === "foul").length,
   };
 }
@@ -673,6 +674,7 @@ function boxRow(label, stats, className = "", minutes = "") {
         <td>${pct(stats.ftMade, stats.ftAtt)}</td>
         <td>${stats.rebounds}</td>
         <td>${stats.steals}</td>
+        <td>${stats.blocks}</td>
         <td>${stats.fouls}</td>
       </tr>`;
 }
@@ -1118,6 +1120,10 @@ function saveDraft() {
     }
     resetDraft();
     render();
+  } else if (event.action === "shot" && !event.made && inputMode === "voice") {
+    // Voice mode skips the rebound screen; say the rebound instead.
+    resetDraft();
+    render();
   } else if (event.action === "shot" && !event.made) {
     draft = { missedShotId: event.id, time: event.time };
     render();
@@ -1208,7 +1214,7 @@ function undoLastPlay() {
 // They come from the hold-to-talk mic, or from a box for typing them that is
 // shown with ?voice=text (hidden again with ?voice=off).
 const VOICE_TEXT_KEY = "fireplug.voice.text";
-// ?voice=debug shows a log of what the speech engine reports (cleared with ?voice=off).
+// ?voice=debug shows a log of what the speech engine reports, for that visit only.
 const VOICE_DEBUG_KEY = "fireplug.voice.debug";
 let voiceDebug = false;
 let voiceTextEnabled = false;
@@ -1230,12 +1236,10 @@ function setupVoiceText() {
   try {
     const mode = new URLSearchParams(location.search).get("voice");
     if (mode === "text") localStorage.setItem(VOICE_TEXT_KEY, "1");
-    if (mode === "debug") localStorage.setItem(VOICE_DEBUG_KEY, "1");
-    if (mode === "off") {
-      localStorage.removeItem(VOICE_TEXT_KEY);
-      localStorage.removeItem(VOICE_DEBUG_KEY);
-    }
-    voiceDebug = localStorage.getItem(VOICE_DEBUG_KEY) === "1";
+    if (mode === "off") localStorage.removeItem(VOICE_TEXT_KEY);
+    // Older versions remembered the debug log; it now lasts one visit.
+    localStorage.removeItem(VOICE_DEBUG_KEY);
+    voiceDebug = mode === "debug";
     voiceTextEnabled = localStorage.getItem(VOICE_TEXT_KEY) === "1";
   } catch {
     voiceTextEnabled = false;
@@ -1518,6 +1522,7 @@ function runVoiceCommand(command) {
       break;
     case "foul":
     case "steal":
+    case "block":
       draft = { team, player: String(player), time: state.lastTime, action: command.type };
       saveDraft();
       break;
@@ -1594,8 +1599,35 @@ function wireEvents() {
     });
   });
 
-  $("#shotCourt").addEventListener("click", (event) => {
-    const rect = event.currentTarget.getBoundingClientRect();
+  // A shot is placed when the finger lifts, and the click that would follow is
+  // cancelled. iPhone drops that click when the tap also ends a scroll or clears
+  // a text selection (holding the mic can leave one), which made the court need
+  // two taps; and letting it through would land it on whatever replaced the
+  // court (Made/Missed, or an Undo). A touch that moves is a scroll, not a shot.
+  let courtTouch = null;
+  let courtTouchAt = 0;
+  const court = $("#shotCourt");
+  court.addEventListener("touchstart", (event) => {
+    const touch = event.touches[0];
+    courtTouch = event.touches.length === 1 ? { x: touch.clientX, y: touch.clientY } : null;
+  }, { passive: true });
+  court.addEventListener("touchend", (event) => {
+    const touch = event.changedTouches[0];
+    const start = courtTouch;
+    courtTouch = null;
+    if (!start || event.touches.length) return;
+    if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 12) return;
+    event.preventDefault();
+    courtTouchAt = Date.now();
+    placeShot(touch);
+  }, { passive: false });
+  court.addEventListener("click", (event) => {
+    if (Date.now() - courtTouchAt < 800) return; // already placed on touchend
+    placeShot(event);
+  });
+  function placeShot(event) {
+    if (step !== "location") return;
+    const rect = court.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * 100;
     const y = ((event.clientY - rect.top) / rect.height) * 100;
     const base = toBaseShotLocation(x, y, draft.team);
@@ -1610,7 +1642,7 @@ function wireEvents() {
     // A shot called by voice already knows whether it went in.
     if (typeof draft.made === "boolean") saveDraft();
     else setStep("result");
-  });
+  }
 
   $("#freeThrowBtn").addEventListener("click", () => {
     draft.shotType = "freeThrow";
