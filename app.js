@@ -1,7 +1,7 @@
 import { applySub, bench, currentLineup, formatMinutes, secondsPlayed, startingLineup } from "./lineups.mjs?v=19";
 import { applyPickedRosters, sanitizePlayerName, sanitizeRoster } from "./rosters.mjs?v=1";
 import { describeCommand, parseSegment, splitPlays } from "./voice.mjs?v=3";
-import { createVoiceListener, speechSupported } from "./speech.mjs?v=4";
+import { createVoiceListener, speechSupported } from "./speech.mjs?v=5";
 
 const STORAGE_KEY = "fireplug.stats.game.v1";
 const DEFAULT_CLOCK_SECONDS = 8 * 60;

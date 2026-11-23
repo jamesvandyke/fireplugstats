@@ -112,6 +112,13 @@ export function createVoiceListener({ onText, onInterim, onError, onState, onDeb
     },
     // Turns the mic off, e.g. when the page is hidden; the next press starts it again.
     shutdown() {
+      // Drop any press in progress first, or the engine's end would restart it.
+      const pressing = active();
+      holding = false;
+      clearTimeout(tail);
+      tail = null;
+      carried = [];
+      if (pressing) onState?.(false);
       if (!recognition || !running) return;
       log("shutdown");
       try { recognition.abort(); } catch { /* already stopped */ }
