@@ -565,6 +565,7 @@ function setStep(nextStep) {
   if (step === "location") applyCourtOrientation($("#shotCourt"), draft.team);
   renderShotQueue();
   if (step === "subIn" || step === "subOut") renderSubChoices();
+  applyInputMode();
 }
 
 function resetDraft() {
@@ -577,6 +578,7 @@ function resetDraft() {
     return;
   }
   draft = {};
+  tapFallback = false;
   setStep("player");
 }
 
@@ -1209,6 +1211,7 @@ const VOICE_TEXT_KEY = "fireplug.voice.text";
 // ?voice=debug shows a log of what the speech engine reports (cleared with ?voice=off).
 const VOICE_DEBUG_KEY = "fireplug.voice.debug";
 let voiceDebug = false;
+let voiceTextEnabled = false;
 const voiceDebugLines = [];
 
 function logVoiceDebug(message) {
@@ -1233,10 +1236,108 @@ function setupVoiceText() {
       localStorage.removeItem(VOICE_DEBUG_KEY);
     }
     voiceDebug = localStorage.getItem(VOICE_DEBUG_KEY) === "1";
-    $("#voiceTextForm").hidden = localStorage.getItem(VOICE_TEXT_KEY) !== "1";
+    voiceTextEnabled = localStorage.getItem(VOICE_TEXT_KEY) === "1";
   } catch {
-    $("#voiceTextForm").hidden = true;
+    voiceTextEnabled = false;
   }
+}
+
+// Voice or Touch: how plays are entered on the Track tab, remembered per phone.
+// Voice shows what was just heard (each phrase with its own Undo) and the mic
+// bar; the court only comes up for a called shot, and the player grid is one tap
+// away. Touch is the player grid with no mic.
+const INPUT_MODE_KEY = "fireplug.inputMode";
+let inputMode = "touch";
+let tapFallback = false; // Voice mode, picking a player by hand for one play
+let micListener = null;
+const voiceLog = []; // newest first: { phrase, heard, lines, undoable, undone }
+
+function voiceAvailable() {
+  return speechSupported() || voiceTextEnabled;
+}
+
+function setupInputMode() {
+  let saved = null;
+  try { saved = localStorage.getItem(INPUT_MODE_KEY); } catch { /* private mode */ }
+  inputMode = voiceAvailable() && saved !== "touch" ? "voice" : "touch";
+  $("#modeSwitch").hidden = !voiceAvailable();
+  $$("#modeSwitch [data-mode]").forEach((button) => {
+    button.addEventListener("click", () => setInputMode(button.dataset.mode));
+  });
+  $("#tapPlayerBtn").addEventListener("click", () => {
+    tapFallback = true;
+    applyInputMode();
+  });
+  $("#allPlaysBtn").addEventListener("click", () => $('.tab[data-view="plays"]').click());
+  $("#voiceLog").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-phrase]");
+    if (button) undoVoicePlays(Number(button.dataset.phrase));
+  });
+  applyInputMode();
+}
+
+function setInputMode(mode) {
+  if (mode === inputMode) return;
+  inputMode = mode;
+  tapFallback = false;
+  try { localStorage.setItem(INPUT_MODE_KEY, mode); } catch { /* private mode */ }
+  if (mode === "touch") micListener?.shutdown();
+  applyInputMode();
+}
+
+function voiceHomeShown() {
+  return inputMode === "voice" && step === "player" && !tapFallback;
+}
+
+function applyInputMode() {
+  const voice = inputMode === "voice";
+  const mic = voice && speechSupported();
+  document.body.classList.toggle("mode-voice", voice);
+  document.body.classList.toggle("has-mic", mic);
+  $("#micBar").hidden = !mic;
+  $("#voiceTextForm").hidden = !(voice && voiceTextEnabled);
+  $$("#modeSwitch [data-mode]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.mode === inputMode));
+  });
+  const home = voiceHomeShown();
+  $("#voiceHome").hidden = !home;
+  $(".event-panel").hidden = home;
+  if (home || !voice) $("#voiceBanner").hidden = true;
+  if (!home) $("#voiceLive").hidden = true;
+  // Picking a player by hand in Voice mode: Back returns to what was heard.
+  $("#backBtn").disabled = step === "player" && !(voice && tapFallback);
+  renderVoiceLog();
+}
+
+function renderVoiceLog() {
+  const recent = voiceLog.slice(0, 3);
+  $("#voiceEmpty").hidden = voiceLog.length > 0;
+  $("#voiceLog").innerHTML = recent.map((entry, index) => {
+    // "Tap the court" is old news once the phrase's shots are placed.
+    const waiting = pendingShots.some((shot) => shot.phrase === entry.phrase);
+    const lines = entry.lines
+      .map((line) => ({ ...line, text: waiting ? line.text : line.text.replace(/\. Tap the court.*$/, ".") }))
+      // Problems start with the words heard, which the card already quotes.
+      .map((line) => ({ ...line, text: line.text.replace(/^"[^"]*": /, "") }))
+      .map((line) => `<p class="voice-line${line.ok ? "" : " voice-error"}">${escapeHtml(line.text)}</p>`)
+      .join("");
+    const action = entry.undone
+      ? `<span class="voice-undone">Undone</span>`
+      : entry.undoable
+        ? `<button class="voice-entry-undo" type="button" data-phrase="${entry.phrase}">Undo</button>`
+        : "";
+    const classes = ["voice-entry", index === 0 ? "latest" : "", entry.undone ? "undone" : ""].filter(Boolean).join(" ");
+    return `<li class="${classes}"><div><p class="voice-heard">&ldquo;${escapeHtml(entry.heard)}&rdquo;</p>${lines}</div>${action}</li>`;
+  }).join("");
+}
+
+// What the mic is hearing right now, or a mic problem, above the list.
+function showVoiceLive(text, { listening = false, error = false } = {}) {
+  const live = $("#voiceLive");
+  live.textContent = text;
+  live.classList.toggle("listening", listening);
+  live.classList.toggle("voice-error", error);
+  live.hidden = false;
 }
 
 function voiceGame() {
@@ -1254,6 +1355,11 @@ let voiceBannerTimer = null;
 function showVoiceBanner(lines, { phrase = null, listening = false } = {}) {
   const banner = $("#voiceBanner");
   clearTimeout(voiceBannerTimer);
+  if (voiceHomeShown()) {
+    banner.hidden = true;
+    showVoiceLive(lines.map((line) => line.text).join(" "), { listening, error: lines.some((line) => !line.ok) });
+    return;
+  }
   banner.classList.toggle("listening", listening);
   banner.innerHTML = lines
     .map((line) => `<p class="${line.ok ? "" : "voice-error"}">${escapeHtml(line.text)}</p>`)
@@ -1272,10 +1378,13 @@ function undoVoicePlays(phrase) {
   state.events = state.events.filter((event) => !removed.has(event.id));
   pendingShots = pendingShots.filter((shot) => shot.phrase !== phrase);
   persist();
+  const entry = voiceLog.find((item) => item.phrase === phrase);
+  if (entry) entry.undone = true;
   resetDraft();
   render();
   publishLiveSoon();
-  showVoiceBanner([{ ok: true, text: "Undid that." }]);
+  if (voiceHomeShown()) $("#voiceLive").hidden = true;
+  else showVoiceBanner([{ ok: true, text: "Undid that." }]);
 }
 
 let voicePhraseCount = 0;
@@ -1292,8 +1401,17 @@ function runVoiceText(text) {
   const added = state.events.filter((event) => !before.has(event.id)).map((event) => event.id);
   voicePhrasePlays.set(phrase, added);
   const queuedShots = pendingShots.some((shot) => shot.phrase === phrase);
-  const undoable = !results.some((result) => result.isUndo) && (added.length || queuedShots);
-  showVoiceBanner(results, { phrase: undoable ? phrase : null });
+  const undoable = Boolean(!results.some((result) => result.isUndo) && (added.length || queuedShots));
+  voiceLog.unshift({ phrase, heard: text.trim(), lines: results, undoable, undone: false });
+  voiceLog.splice(20);
+  if (voiceHomeShown()) {
+    $("#voiceBanner").hidden = true;
+    $("#voiceLive").hidden = true;
+    renderVoiceLog();
+  } else {
+    renderVoiceLog();
+    showVoiceBanner(results, { phrase: undoable ? phrase : null });
+  }
 }
 
 function voiceErrorText(code) {
@@ -1310,8 +1428,6 @@ function voiceErrorText(code) {
 function setupMic() {
   const button = $("#micBtn");
   if (!speechSupported()) return;
-  $("#micBar").hidden = false;
-  document.body.classList.add("has-mic");
   const listener = createVoiceListener({
     onState: (on) => {
       button.classList.toggle("listening", on);
@@ -1325,6 +1441,7 @@ function setupMic() {
     onError: (code) => showVoiceBanner([{ ok: false, text: voiceErrorText(code) }]),
     onDebug: logVoiceDebug,
   });
+  micListener = listener;
   if (voiceDebug) logVoiceDebug(`ready: ${navigator.userAgent}`);
   button.addEventListener("pointerdown", (event) => {
     logVoiceDebug(`press (${event.pointerType})`);
@@ -1554,7 +1671,10 @@ function wireEvents() {
   });
 
   $("#backBtn").addEventListener("click", () => {
-    if (step === "action") resetDraft();
+    if (step === "player" && tapFallback) {
+      tapFallback = false;
+      applyInputMode();
+    } else if (step === "action") resetDraft();
     else if (step === "location" && draft.queued) dropCurrentShot();
     else if (step === "location") setStep("action");
     else if (step === "result") setStep("location");
@@ -1667,6 +1787,7 @@ $("#startGameBtn").addEventListener("click", startGame);
 wireEvents();
 setupVoiceText();
 setupMic();
+setupInputMode();
 resetDraft();
 registerServiceWorker();
 
