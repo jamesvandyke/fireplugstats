@@ -169,3 +169,17 @@ test("shutdown turns the mic off until the next press", () => {
   release();
   assert.deepEqual(log.texts, ["start clock", "stop clock"]);
 });
+
+test("shutdown during a press stops the mic for good", () => {
+  const { listener, log, engine } = setup();
+  listener.start();
+  engine().hear("foul gold 23");
+  listener.shutdown();
+  assert.equal(engine().running, false);
+  assert.equal(engine().starts, 1);
+  mock.timers.tick(TAIL_MS);
+  assert.deepEqual(log.texts, []);
+  assert.deepEqual(log.states, [true, false]);
+  listener.stop();
+  assert.deepEqual(log.states, [true, false]);
+});
